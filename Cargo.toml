@@ -1,0 +1,49 @@
+[package]
+name = "powerbaby"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+log = "0.4.0"
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env", "cargo", "string"] }
+
+bevy = { version = "0.10.0", features = ["jpeg"] }
+bevy_asset_loader = { version = "0.15" }
+bevy_rapier3d = { version = "0.21.0" }
+bevy_turborand = { version = "0.5.0" }
+# https://github.com/NiklasEi/bevy_asset_loader
+bevy_mod_picking = { git = "https://github.com/aevyrie/bevy_mod_picking", rev = "refs/pull/191/head" }
+iyes_progress = { version = "0.8", features = [ "assets" ] }
+#bevy_tweening = { version = "0.7" }
+
+# optional
+# bevy_editor_pls = { version = "0.3", optional = true }
+bevy-inspector-egui = { version = "0.18.0" }
+bevy-debug-text-overlay = { version = "5.1", optional = true }
+
+# networking
+# naia-bevy-client = { version = "0.20.1", features = ["transport_webrtc"] }
+# naia-bevy-server = { version = "0.20", features = ["transport_webrtc"] }
+# naia-bevy-shared = { version = "0.20" }
+naia-bevy-client = { git = "https://github.com/naia-lib/naia", rev = "954f36e7dcb27be086951c0d3208bde34d552dba", features = ["transport_webrtc"] }
+naia-bevy-server = { git = "https://github.com/naia-lib/naia", rev = "954f36e7dcb27be086951c0d3208bde34d552dba", features = ["transport_webrtc"] }
+naia-bevy-shared = { git = "https://github.com/naia-lib/naia", rev = "954f36e7dcb27be086951c0d3208bde34d552dba" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = { version = "0.2.84", features = [ "serde-serialize" ] }
+
+[features]
+default = ["debug"]
+debug = ["bevy-debug-text-overlay/debug"]
+
+# Enable a small amount of optimization in debug mode
+[profile.dev]
+opt-level = 1
+
+# Enable high optimizations for dependencies (incl. Bevy), but not for our code:
+[profile.dev.package."*"]
+opt-level = 3
+
+[workspace]
+resolver = "2" # Important! wgpu/Bevy needs this!
