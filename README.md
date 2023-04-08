@@ -14,7 +14,7 @@ cargo build --release
 # in terminal 1
 target/release/powerbaby server
 
-# in terminal n
+# in 'n' terminals
 target/release/powerbaby client
 ```
 
