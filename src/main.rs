@@ -49,7 +49,7 @@ pub enum Subcommand {
 // Defines the amount of time that should elapse between each step.  This is essentially
 // a "target" of 60 updates per second
 // const TIME_STEP: f32 = 1.0 / 60.0;
-pub const TIME_STEP: f32 = 1.0 / 30.0;
+pub const TIME_STEP: f32 = 1.0 / 60.0;
 
 pub const BALL_RADIUS: f32 = 0.11;
 pub const BALL_MASS: f32 = 0.45;

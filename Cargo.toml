@@ -9,10 +9,9 @@ anyhow = "1"
 clap = { version = "4", features = ["derive", "env", "cargo", "string"] }
 
 bevy = { version = "0.10.0", features = ["jpeg"] }
-bevy_asset_loader = { version = "0.15" }
+bevy_asset_loader = { version = "0.16" }
 bevy_rapier3d = { version = "0.21.0" }
 bevy_turborand = { version = "0.5.0" }
-# https://github.com/NiklasEi/bevy_asset_loader
 bevy_mod_picking = { git = "https://github.com/aevyrie/bevy_mod_picking", rev = "refs/pull/191/head" }
 iyes_progress = { version = "0.8", features = [ "assets" ] }
 #bevy_tweening = { version = "0.7" }

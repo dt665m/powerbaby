@@ -30,17 +30,17 @@ pub mod systems {
     use super::components::{RepPhysics, UpdateWith};
 
     //sync rapier systems:
-    //It should run after rapier systems and before naia’s ‘ReceiveEvents’ set. And in the 
+    //It should run after rapier systems and before naia’s ‘ReceiveEvents’ set. And in the
     //client the exactly opposite. Naia events, then sync system and then rapier systems.
-    
-    // in server after physics systems before naia systems
+
+    // in server after physics systems before naia 'ReceiveEvents' systems
     pub fn sync_from_rapier_to_naia(mut query: Query<(&Transform, &Velocity, &mut RepPhysics)>) {
         for (transform, velocity, mut physics_properties) in query.iter_mut() {
             physics_properties.update_with((transform, velocity));
         }
     }
 
-    // in client after naia systems before physics systems
+    // in client after naia 'ReceiveEvents' systems before physics systems
     pub fn sync_from_naia_to_rapier(
         mut query: Query<(&mut Transform, &mut Velocity, &RepPhysics)>,
     ) {
@@ -83,7 +83,7 @@ pub mod channels {
 }
 
 pub mod messages {
-    use naia_bevy_shared::{EntityProperty, Message, Protocol, ProtocolPlugin};
+    use naia_bevy_shared::{EntityProperty, Message, Property, Protocol, ProtocolPlugin, Serde};
 
     // Plugin
     pub struct MessagesPlugin;
@@ -97,15 +97,32 @@ pub mod messages {
         }
     }
 
+    #[derive(Clone, PartialEq, Serde)]
+    pub struct Vec3 {
+        pub x: f32,
+        pub y: f32,
+        pub z: f32,
+    }
+
+    impl From<bevy::prelude::Vec3> for Vec3 {
+        fn from(b_vec3: bevy::prelude::Vec3) -> Self {
+            Self {
+                x: b_vec3.x,
+                y: b_vec3.y,
+                z: b_vec3.z,
+            }
+        }
+    }
+
     #[derive(Message)]
     pub struct KeyCommand {
         pub entity: EntityProperty,
         pub reset: bool,
-        pub shoot: bool,
+        pub shoot: Option<(Vec3, Vec3)>,
     }
 
     impl KeyCommand {
-        pub fn new(reset: bool, shoot: bool) -> Self {
+        pub fn new(reset: bool, shoot: Option<(Vec3, Vec3)>) -> Self {
             Self {
                 entity: EntityProperty::new_empty(),
                 reset,

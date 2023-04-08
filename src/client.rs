@@ -3,19 +3,21 @@
 ///update networked Components. Updated Components automatically sync to remote ECS world if they are in-scope.
 ///
 /// # TODO
-/// - Interpolate Motions in the front end
-/// - handle raycast on the front end
-/// - move from Position to RepPhysics 
-/// - confirm soundness of the system order
+/// - move from Position to RepPhysics (since there are no rotations on the ball right now)
 /// - WASM client
-/// - goalie jump or bobble or shield
-/// - leaderboard
+/// - goalie jump or bobble or shield (probably shield?)
+/// - leaderboard with total scores
+/// - asset loading
 /// - graphics
 /// - music
 /// - sound effects
 /// - render unowned balls names (nice to have?)
 ///
 /// #Later Learning
+/// - confirm soundness of the system orders (client and server side)
+/// - Determinism:
+///     - https://github.com/dimforge/bevy_rapier/issues/79
+///     - https://github.com/Looooong/doce/blob/67a32acbd8cfbf31c88b253bf5991a17da5d06bc/src/main.rs
 /// - Lag compensation on server (maybe, this is hard)
 ///     - store X ticks of server state
 ///     - when a kick arrives, simulate from the kick tick that the client THOUGHT he saw
@@ -31,6 +33,7 @@ use std::f32::consts::*;
 // use bevy::input::InputPlugin;
 // use bevy::log::LogPlugin;
 use bevy::prelude::*;
+// use bevy_asset_loader::prelude::*;
 use bevy_rapier3d::prelude::*;
 
 use bevy_debug_text_overlay::{screen_print, OverlayPlugin};
@@ -41,6 +44,15 @@ use naia_bevy_client::{
     transport::webrtc, Client, ClientConfig, CommandHistory, Plugin as NaiaClientPlugin,
     ReceiveEvents,
 };
+
+// #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Default, States)]
+// pub enum AppState {
+//     #[default]
+//     Loading,
+//     Staging,
+//     Connect,
+//     InGame,
+// }
 
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 struct MainLoop;
@@ -55,12 +67,6 @@ pub fn debug_overlay(time: Res<Time>) {
         let last_fps = 1.0 / time.delta_seconds();
         screen_print!(col: Color::CYAN, "fps: {last_fps:.0}");
     }
-    // if game.shot {
-    //     let col = Color::FUCHSIA;
-    //     screen_print!(sec: 0.5, col: col, "power: {}", game.power);
-    //     // screen_print!(sec: 0.5, col: col, "kick_elapsed: {}", game.shot_elapsed);
-    //     screen_print!(sec: 0.5, col: col, "goal: {}", game.goal);
-    // }
 }
 
 pub fn init(
@@ -115,15 +121,22 @@ pub fn init(
         ..default()
     });
 
-    commands.spawn((
-        Name::new("Ground"),
-        PbrBundle {
-            mesh: meshes.add(shape::Plane::from_size(crate::GROUND_SIZE * 2.0).into()),
-            material: ground_material,
-            transform: Transform::from_xyz(0.0, crate::GROUND_HEIGHT, 0.0),
-            ..default()
-        },
-    ));
+    global.ground_entity = Some(
+        commands
+            .spawn((
+                Name::new("Ground"),
+                PbrBundle {
+                    mesh: meshes.add(shape::Plane::from_size(crate::GROUND_SIZE * 2.0).into()),
+                    material: ground_material,
+                    transform: Transform::from_xyz(0.0, crate::GROUND_HEIGHT, 0.0),
+                    ..default()
+                },
+                Collider::cuboid(crate::GROUND_SIZE, 0.0, crate::GROUND_SIZE),
+                RigidBody::KinematicPositionBased,
+                Friction::new(100.0),
+            ))
+            .id(),
+    );
 
     let x = 0.0;
     let y = crate::GROUND_HEIGHT;
@@ -191,8 +204,11 @@ impl OwnedEntity {
 
 #[derive(Resource, Default)]
 pub struct Global {
+    pub camera_is_birdseye: bool,
+
     // pub owned_entity: Option<OwnedEntity>,
-    pub owned_entity: Option<Entity>,
+    pub owned_entity: Option<OwnedEntity>,
+    pub ground_entity: Option<Entity>,
     pub queued_command: Option<KeyCommand>,
     pub command_history: CommandHistory<KeyCommand>,
 
@@ -217,39 +233,52 @@ mod components {
     #[derive(Component)]
     pub struct Interp {
         interp: f32,
+
         pub interp_x: f32,
         pub interp_y: f32,
+        pub interp_z: f32,
 
         last_x: f32,
         last_y: f32,
+        last_z: f32,
+
         pub next_x: f32,
         pub next_y: f32,
+        pub next_z: f32,
     }
 
     impl Interp {
-        pub fn new(x: i16, y: i16) -> Self {
-            let x = x as f32;
-            let y = y as f32;
+        pub fn new(x: f32, y: f32, z: f32) -> Self {
             Self {
                 interp: 0.0,
+
                 interp_x: x,
                 interp_y: y,
+                interp_z: z,
 
                 last_x: x,
                 last_y: y,
+                last_z: z,
+
                 next_x: x,
                 next_y: y,
+                next_z: z,
             }
         }
 
-        pub(crate) fn next_position(&mut self, next_x: i16, next_y: i16) {
+        pub(crate) fn next_position(&mut self, next_x: f32, next_y: f32, next_z: f32) {
             self.interp = 0.0;
             self.last_x = self.next_x;
             self.last_y = self.next_y;
+            self.last_z = self.next_z;
+
             self.interp_x = self.next_x;
             self.interp_y = self.next_y;
-            self.next_x = next_x as f32;
-            self.next_y = next_y as f32;
+            self.interp_z = self.next_z;
+
+            self.next_x = next_x;
+            self.next_y = next_y;
+            self.next_z = next_z;
         }
 
         pub(crate) fn interpolate(&mut self, interpolation: f32) {
@@ -260,6 +289,7 @@ mod components {
                 self.interp = interpolation;
                 self.interp_x = self.last_x + (self.next_x - self.last_x) * self.interp;
                 self.interp_y = self.last_y + (self.next_y - self.last_y) * self.interp;
+                self.interp_z = self.last_z + (self.next_z - self.last_z) * self.interp;
             }
         }
     }
@@ -348,6 +378,7 @@ mod events {
     pub fn message_events(
         client: Client,
         mut global: ResMut<Global>,
+        mut meshes: ResMut<Assets<Mesh>>,
         mut materials: ResMut<Assets<StandardMaterial>>,
 
         mut commands: Commands,
@@ -357,49 +388,78 @@ mod events {
     ) {
         for events in event_reader.iter() {
             for message in events.read::<EntityAssignmentChannel, EntityAssignment>() {
-                info!("entityassignment message");
                 let assign = message.assign;
                 let entity = message.entity.get(&client).unwrap();
                 if assign {
-                    info!("gave ownership of entity");
+                    info!("entityassignment ownership");
 
                     // Here we create a local copy of the Player entity, to use for client-side prediction
-                    if let Ok((_pos, mat_handle)) = ball_query.get(entity) {
-                        // global.owned_entity = Some(OwnedEntity::new(entity, prediction_entity));
-                        global.owned_entity = Some(entity);
-                        materials.get_mut(mat_handle).unwrap().base_color.set_a(1.0);
+                    if let Ok((pos, mat_handle)) = ball_query.get(entity) {
+                        //change the owned_confirmed entity (server side) to a transparent red
+                        let confirmed_ball_mat = materials.get_mut(mat_handle).unwrap();
+                        confirmed_ball_mat.base_color.set_a(1.0);
+
+                        // // take and give this texture to the prediction ball.  All balls
+                        // // are spawned with the default texture
+                        // let confirmed_texture = confirmed_ball_mat.base_color_texture.take();
+                        // // set the confirmed ball to red with transparency
+                        // confirmed_ball_mat.base_color = Color::rgba(0.7, 0.2, 0.1, 0.4);
+                        // confirmed_ball_mat.unlit = true;
+
                         //add physics ball for clicking, eventually use it for prediction?
-                        commands.entity(entity).insert((
-                            RigidBody::Dynamic,
-                            Collider::ball(crate::BALL_RADIUS),
-                            ColliderMassProperties::Mass(crate::BALL_MASS),
-                            Velocity::zero(),
-                            Friction::new(5.0),
-                            ExternalForce::default(),
-                            ExternalImpulse::default(),
-                            GravityScale::default(),
-                            Damping {
-                                linear_damping: 1.0,
-                                angular_damping: 2.0,
-                            },
-                            Restitution {
-                                coefficient: 1.0,
-                                combine_rule: CoefficientCombineRule::Average,
-                            },
-                            Sleeping::disabled(),
-                            Predicted,
-                        ));
+                        let prediction_entity = commands
+                            .entity(entity)
+                            .duplicate()
+                            .insert((
+                                PbrBundle {
+                                    mesh: meshes.add(
+                                        shape::UVSphere {
+                                            radius: crate::BALL_RADIUS,
+                                            sectors: 36,
+                                            stacks: 18,
+                                        }
+                                        .into(),
+                                    ),
+                                    material: materials.add(Color::rgba(0.7, 0.2, 0.1, 0.0).into()),
+                                    // material: materials.add(StandardMaterial {
+                                    //     base_color: Color::rgb(1.0, 1.0, 1.0),
+                                    //     base_color_texture: confirmed_texture,
+                                    //     alpha_mode: AlphaMode::Blend,
+                                    //     ..default()
+                                    // }),
+                                    transform: Transform::from_xyz(*pos.x, *pos.y, *pos.z),
+                                    ..default()
+                                },
+                                RigidBody::Dynamic,
+                                Collider::ball(crate::BALL_RADIUS),
+                                ColliderMassProperties::Mass(crate::BALL_MASS),
+                                Velocity::zero(),
+                                Friction::new(5.0),
+                                ExternalForce::default(),
+                                ExternalImpulse::default(),
+                                GravityScale::default(),
+                                Damping {
+                                    linear_damping: 1.0,
+                                    angular_damping: 2.0,
+                                },
+                                Restitution {
+                                    coefficient: 1.0,
+                                    combine_rule: CoefficientCombineRule::Average,
+                                },
+                                Sleeping::default(),
+                                Predicted,
+                            ))
+                            .id();
+                        global.owned_entity = Some(OwnedEntity::new(entity, prediction_entity));
                     }
                 } else {
+                    info!("entityassignment disown");
                     let mut disowned: bool = false;
-                    if let Some(ref e) = &global.owned_entity {
-                        if e == &entity {
+                    if let Some(owned_entity) = &global.owned_entity {
+                        if owned_entity.confirmed == entity {
+                            commands.entity(owned_entity.predicted).despawn();
                             disowned = true;
                         }
-                        // if owned_entity.confirmed == entity {
-                        //     commands.entity(owned_entity.predicted).despawn();
-                        //     disowned = true;
-                        // }
                     }
                     if disowned {
                         info!("removed ownership of entity");
@@ -464,6 +524,7 @@ mod events {
                                 ),
                                 ..default()
                             },
+                            Interp::new(*pos.x, *pos.y, *pos.z),
                             Confirmed,
                         ));
                     }
@@ -489,6 +550,7 @@ mod events {
                                 transform: Transform::from_xyz(*pos.x, *pos.y, *pos.z),
                                 ..default()
                             },
+                            Interp::new(*pos.x, *pos.y, *pos.z),
                             NotShadowReceiver,
                             Confirmed,
                         ));
@@ -563,16 +625,10 @@ mod events {
         mut tick_reader: EventReader<ClientTickEvent>,
         // mut position_query: Query<&mut Position>,
     ) {
-        // let Some(predicted_entity) = global
-        //     .owned_entity
-        //     .as_ref()
-        //     .map(|owned_entity| owned_entity.predicted) else {
-        //     // No owned Entity
-        //     return;
-        // };
-
-        let Some(predicted_entity) = global.owned_entity
-            else {
+        let Some(predicted_entity) = global
+            .owned_entity
+            .as_ref()
+            .map(|owned_entity| owned_entity.predicted) else {
             // No owned Entity
             return;
         };
@@ -596,59 +652,165 @@ mod events {
                 &command,
             );
 
-            // if let Ok(mut position) = position_query.get_mut(predicted_entity) {
-            //     // Apply command
-            //     process_command(&command, &mut position);
-            // }
+            //#TODO client-side prediction command isn't handled yet
+            // we want to 'process_ball_commmand' on the predicted entity
         }
     }
 }
 
 mod input {
     use super::Global;
-    use bevy::prelude::*;
+    use bevy::{prelude::*, render::camera::RenderTarget, window::PrimaryWindow};
+    use bevy_rapier3d::prelude::*;
 
+    use super::components::Confirmed;
     use crate::protocol::messages::KeyCommand;
     use naia_bevy_client::Client;
 
-    pub fn key_input(
+    pub fn camera(
+        time: Res<Time>,
+        mut global: ResMut<Global>,
+        keyboard_input: Res<Input<KeyCode>>,
+
+        mut camera_query: Query<&mut Transform, With<Camera>>,
+    ) {
+        let mut camera_transform = camera_query.single_mut();
+
+        if keyboard_input.just_pressed(KeyCode::C) {
+            global.camera_is_birdseye = !global.camera_is_birdseye;
+            if global.camera_is_birdseye {
+                *camera_transform =
+                    crate::BIRDS_EYE_CAM.looking_at(crate::BIRDS_EYE_CAM_LOOK, Vec3::Y);
+            } else {
+                *camera_transform = crate::KICK_CAM.looking_at(crate::KICK_CAM_LOOK, Vec3::Y);
+            }
+        }
+
+        if keyboard_input.pressed(KeyCode::Left) {
+            camera_transform.rotate_around(
+                crate::BALL_START,
+                Quat::from_euler(EulerRot::XYZ, 0.0, time.delta_seconds(), 0.0),
+            );
+        } else if keyboard_input.pressed(KeyCode::Right) {
+            camera_transform.rotate_around(
+                crate::BALL_START,
+                Quat::from_euler(EulerRot::XYZ, 0.0, -time.delta_seconds(), 0.0),
+            );
+        }
+    }
+
+    pub fn ball(
         mut global: ResMut<Global>,
         client: Client,
         keyboard_input: Res<Input<KeyCode>>,
         mouse_buttons: ResMut<Input<MouseButton>>,
+        ball_query: Query<&Transform, With<Confirmed>>,
+
+        camera_query: Query<(&Camera, &Transform, &GlobalTransform)>,
+        window: Query<&Window, With<PrimaryWindow>>,
+        rapier_context: Res<RapierContext>,
     ) {
-        let q = keyboard_input.pressed(KeyCode::Q);
-        let space = keyboard_input.pressed(KeyCode::Space);
+        let Some(owned_entity) = &global.owned_entity else {
+            return;
+        };
+
+        let Ok(ball_transform) = ball_query.get(owned_entity.confirmed) else {
+            return;
+        };
+
+        //#HACK only let the ball get kicked if it has already settled down from the spawn
+        //point.  When prediction is implemented, We use the local predicted ball and not the
+        //confirmed ball because of lag compensation.  IE, we expect the confirmed ball to be
+        //already dropped by the time we actually see the updates at the client.  The predicted
+        //ball is spawned after the ball entity assignment.  For now use the Confirmed Entity
+        let can_shoot = ball_transform.translation.y < 0.01;
+
+        let reset = keyboard_input.pressed(KeyCode::Q);
+        let shoot = match (
+            can_shoot,
+            keyboard_input.pressed(KeyCode::Space),
+            mouse_buttons.pressed(MouseButton::Left),
+        ) {
+            (true, true, _) => Some((
+                Vec3::new(0.015694855, -0.011672409, 0.9998087).into(),
+                Vec3::new(0.0017264052, 0.0070980787, 42.109978).into(),
+            )),
+            (true, false, true) => {
+                capture_ball_click(camera_query, window, rapier_context, &global.ground_entity)
+                    .map(|(ray_normal, ray_point)| (ray_normal.into(), ray_point.into()))
+            }
+            _ => None,
+        };
+
         if let Some(command) = &mut global.queued_command {
-            command.reset = q;
-            command.shoot = space;
+            command.reset = reset;
+            command.shoot = shoot;
         } else if let Some(owned_entity) = &global.owned_entity {
-            let mut key_command = KeyCommand::new(q, space);
-            // key_command.entity.set(&client, &owned_entity.confirmed);
-            key_command.entity.set(&client, &owned_entity);
+            let mut key_command = KeyCommand::new(reset, shoot);
+            key_command.entity.set(&client, &owned_entity.confirmed);
             global.queued_command = Some(key_command);
         }
+    }
+
+    fn capture_ball_click(
+        camera_query: Query<(&Camera, &Transform, &GlobalTransform)>,
+        window: Query<&Window, With<PrimaryWindow>>,
+        rapier_context: Res<RapierContext>,
+        ground_entity: &Option<Entity>,
+    ) -> Option<(Vec3, Vec3)> {
+        let (camera, _camera_transform, camera_global_transform) = camera_query.single();
+
+        // get the window that the camera is displaying to (or the primary window)
+        let window = if let RenderTarget::Window(_id) = camera.target {
+            window.single()
+        } else {
+            window.single()
+            // window.single().get_primary().unwrap()
+        };
+
+        // check if the cursor is inside the window and get its position
+        // then, ask bevy to convert into world coordinates, and truncate to discard Z
+        let Some(ray) = window
+            .cursor_position()
+            .and_then(|cursor| camera.viewport_to_world(camera_global_transform, cursor))
+            else {
+            return None
+        };
+        let filter = QueryFilter {
+            exclude_rigid_body: ground_entity.clone(),
+            ..Default::default()
+        };
+        rapier_context
+            .cast_ray_and_get_normal(ray.origin, ray.direction, 100.0, true, filter)
+            .map(|(_e, intersection)| (intersection.normal, intersection.point))
     }
 }
 
 pub mod sync {
     use bevy::prelude::*;
 
-    use crate::protocol::components::{EntityKind, Position};
+    use crate::protocol::components::Position;
     use naia_bevy_client::Client;
 
-    use super::components::{Confirmed, Interp, LocalCursor, Predicted};
+    use super::components::{Confirmed, Interp, Predicted};
 
-    //#TODO handle interpolation
-    pub fn sync_entities(
+    pub fn serverside_entities(
         client: Client,
-        mut query: Query<(&Position, &mut Transform), With<Confirmed>>,
+        mut query: Query<(&Position, &mut Interp, &mut Transform), With<Confirmed>>,
     ) {
-        for (pos, mut transform) in query.iter_mut() {
-            // log::info!("sync entities: ({}, {}, {})", *pos.x, *pos.y, *pos.z);
-            transform.translation.x = *pos.x;
-            transform.translation.y = *pos.y;
-            transform.translation.z = *pos.z;
+        for (position, mut interp, mut transform) in query.iter_mut() {
+            if *position.x != interp.next_x
+                || *position.y != interp.next_y
+                || *position.z != interp.next_z
+            {
+                interp.next_position(*position.x, *position.y, *position.z);
+            }
+
+            let interp_amount = client.server_interpolation().unwrap();
+            interp.interpolate(interp_amount);
+            transform.translation.x = interp.interp_x;
+            transform.translation.y = interp.interp_y;
+            transform.translation.z = interp.interp_z;
         }
     }
 
@@ -668,26 +830,23 @@ pub mod sync {
     //     }
     // }
     //
-    // pub fn sync_serverside_sprites(
-    //     client: Client,
-    //     mut query: Query<(&Position, &mut Interp, &mut Transform), With<Confirmed>>,
-    // ) {
-    //     for (position, mut interp, mut transform) in query.iter_mut() {
-    //         if *position.x != interp.next_x as i16 || *position.y != interp.next_y as i16 {
-    //             interp.next_position(*position.x, *position.y);
-    //         }
-    //
-    //         let interp_amount = client.server_interpolation().unwrap();
-    //         interp.interpolate(interp_amount);
-    //         transform.translation.x = interp.interp_x;
-    //         transform.translation.y = interp.interp_y;
-    //     }
-    // }
 }
+
+// #[derive(AssetCollection, Resource)]
+// pub struct AppAssets {
+//     #[asset(path = "images/yoshiegg.png")]
+//     pub ball_texture: Handle<Image>,
+//     // #[asset(path = "walking.ogg")]
+//     // walking: Handle<AudioSource>,
+// }
 
 pub fn run() {
     App::default()
-        // Add Naia Client Plugin
+        // .add_state::<AppState>()
+        // .add_loading_state(
+        //     LoadingState::new(AppState::Loading).continue_to_state(AppState::Connect),
+        // )
+        // .add_collection_to_loading_state::<_, AppAssets>(AppState::Loading)
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Power, Baby! (ONLINE)".into(),
@@ -726,23 +885,19 @@ pub fn run() {
                 .chain()
                 .in_set(ReceiveEvents),
         )
-        .configure_set(Tick.after(ReceiveEvents))
         .add_system(events::tick_events.in_set(Tick))
-        // Realtime Gameplay Loop
-        .configure_set(MainLoop.after(Tick))
         .add_systems(
             (
-                input::key_input,
-                // input::cursor_input,
-                sync::sync_entities,
+                input::camera,
+                input::ball,
+                sync::serverside_entities,
                 debug_overlay,
-                // sync::sync_clientside_sprites,
-                // sync::sync_serverside_sprites,
-                // sync::sync_cursor_sprite,
             )
                 .chain()
                 .in_set(MainLoop),
         )
+        .configure_set(Tick.after(ReceiveEvents))
+        .configure_set(MainLoop.after(Tick))
         .add_system(bevy::window::close_on_esc)
         // Run App
         .run();

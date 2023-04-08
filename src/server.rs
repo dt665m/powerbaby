@@ -1,5 +1,5 @@
 /// #NOTES
-/// Client controled entity is handled like so:
+/// Client controlled entity is handled like so:
 /// - Protocol needs to enable "client_authoritative_entities"
 /// - Client needs to insert an entity with "enable_replication(client)"
 /// - Server will receive "InsertComponentEvents"
@@ -36,23 +36,13 @@ use naia_bevy_server::{
     CommandsExt, Plugin as ServerPlugin, Random, ReceiveEvents, RoomKey, Server, ServerConfig,
     UserKey,
 };
+use naia_bevy_shared::BeforeReceiveEvents;
 
 #[derive(Resource)]
 pub struct Global {
     pub goalie_entity: Entity,
     pub main_room_key: RoomKey,
     pub user_ball_map: HashMap<UserKey, Entity>,
-}
-
-pub enum ControllerEvent {
-    Reset {
-        entity: Entity,
-    },
-    Shoot {
-        entity: Entity,
-        ray: RayIntersection,
-        camera_rotation: Quat,
-    },
 }
 
 pub fn auth_events(mut server: Server, mut event_reader: EventReader<AuthEvents>) {
@@ -110,7 +100,7 @@ pub fn connect_events(
                     combine_rule: CoefficientCombineRule::Average,
                 },
             ))
-            .insert(Sleeping::disabled())
+            .insert(Sleeping::default())
             .enable_replication(&mut server)
             .id();
 
@@ -173,16 +163,9 @@ pub fn tick_events(
             };
 
             if let Ok((mut transform, mut ball, mut ext_i)) = ball_query.get_mut(*entity) {
-                let ray_normal = Vec3::new(0.015694855, -0.011672409, 0.9998087);
-                let ray_point = Vec3::new(0.0017264052, 0.0070980787, 42.109978);
-                process_ball_command(
-                    key_command,
-                    &mut transform,
-                    &mut ball,
-                    &mut ext_i,
-                    ray_normal,
-                    ray_point,
-                );
+                // let ray_normal = Vec3::new(0.015694855, -0.011672409, 0.9998087);
+                // let ray_point = Vec3::new(0.0017264052, 0.0070980787, 42.109978);
+                process_ball_command(key_command, &mut transform, &mut ball, &mut ext_i);
             }
         }
     }
@@ -253,16 +236,23 @@ pub fn process_ball_command(
     transform: &mut Transform,
     ball: &mut crate::Ball,
     ext_i: &mut ExternalImpulse,
-    ray_normal: Vec3,
-    ray_point: Vec3,
 ) {
     if key_command.reset && ball.shot && !ball.scored {
         ball.force_reset = true;
         return;
     }
 
-    if key_command.shoot && !ball.shot {
+    //#HACK we stop shots from happening unless the ball is settled on the floor
+    //this works for now minus the spamming inbetween the bounce of the ball when spawned.
+    //probably should set this to a cooldown.  Maybe the cooldown can be implemented in the client
+    //side only for now
+    let Some((ray_normal, ray_point)) = key_command.shoot else {
+        return;
+    };
+
+    if !ball.shot && transform.translation.y < 0.01 {
         let ray_normal = Vec3::new(ray_normal.x, ray_normal.y - 0.8, ray_normal.z);
+        let ray_point = Vec3::new(ray_point.x, ray_point.y, ray_point.z);
         let kick_force = Vec3::new(-2.0, -3.0, -13.0);
         let impulse = ray_normal * kick_force;
         // let impulse_camera = camera_rotation.normalize() * force.neg();
@@ -381,8 +371,18 @@ pub fn goalie(
     }
 }
 
-pub fn init(mut commands: Commands, mut server: Server) {
+pub fn init(
+    mut commands: Commands,
+    mut server: Server,
+    mut rapier_config: ResMut<RapierConfiguration>,
+) {
     info!("Naia Bevy Server Demo init");
+
+    // rapier_config.timestep_mode = TimestepMode::Fixed {
+    //     // dt: crate::TIME_STEP,
+    //     dt: 1.0 / 30.0,
+    //     substeps: 1,
+    // };
 
     // Naia Server initialization
     let server_addresses = webrtc::ServerAddrs::new(
@@ -524,7 +524,6 @@ pub fn run() {
         ))
         // Startup System
         .add_startup_system(init)
-        // Receive Server Events
         .add_systems(
             (
                 auth_events,
@@ -541,15 +540,11 @@ pub fn run() {
                 .chain()
                 .in_set(ReceiveEvents),
         )
-        .add_event::<ControllerEvent>()
-        .edit_schedule(CoreSchedule::FixedUpdate, |schedule| {
-            schedule
-                //#TODO Figure out where the rapier3d engine hooks in the CoreSchedule and make
-                //sure everything else runs AFTER.  SyncPhysics should run last.
-                //order of operations should be Rapier -> Goalie / Magnus -> Sync Physics
-                .add_systems((goalie, crate::magnus_effect).in_base_set(crate::PhysicsSet));
-        })
-        .add_systems((ball_score, ball_reset, ball_sync))
+        // .configure_set(ReceiveEvents.after(PhysicsSet::Writeback))
         .insert_resource(FixedTime::new_from_secs(crate::TIME_STEP))
+        .edit_schedule(CoreSchedule::FixedUpdate, |schedule| {
+            schedule.add_systems((goalie, crate::magnus_effect).after(PhysicsSet::Writeback));
+        })
+        .add_systems((ball_sync, ball_reset, ball_score).in_set(BeforeReceiveEvents))
         .run();
 }
