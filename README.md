@@ -5,6 +5,7 @@ WIP Multiplayer soccer penalty kick game
 ## Getting Started
 
 [Install Rust](https://www.rust-lang.org/tools/install)
+
 If you have [Just](https://github.com/casey/just) installed, see the justfile for pipeline shortcuts
 
 ```sh
