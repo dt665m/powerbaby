@@ -4,13 +4,8 @@
 ///
 /// # TODO
 /// - move from Position to RepPhysics (since there are no rotations on the ball right now)
-/// - WASM client
 /// - goalie jump or bobble or shield (probably shield?)
-/// - leaderboard with total scores
 /// - asset loading
-/// - graphics
-/// - music
-/// - sound effects
 /// - render unowned balls names (nice to have?)
 ///
 /// #Later Learning

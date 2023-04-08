@@ -1,10 +1,11 @@
-# PowerBaby Reveal Game (BevyEngine + Naia Networking) 
+# PowerBaby Gender Reveal (BevyEngine + Naia Networking) 
 
-WIP
+WIP Multiplayer soccer penalty kick game
 
 ## Getting Started
 
 [Install Rust](https://www.rust-lang.org/tools/install)
+If you have [Just](https://github.com/casey/just) installed, see the justfile for pipeline shortcuts
 
 ```sh
 cargo build --release
@@ -16,7 +17,6 @@ target/release/powerbaby server
 target/release/powerbaby client
 ```
 
-If [Just](https://github.com/casey/just) is installed, see the justfile for pipeline shortcuts
 
 ## Roadmap
 🚧 = In Progress
@@ -27,9 +27,9 @@ If [Just](https://github.com/casey/just) is installed, see the justfile for pipe
 | ------- | :------: |
 | Ball Physics | 🚀 |
 | Dumb Goalie | 🚀 |
-| Online Mode | ⛑  |
-| Leaderboard | 🚧  |
-| Goalie Special Moves | 🚧  |
+| Realtime Multiplayer | ⛑  |
+| Leaderboard / Stat Tracking | 🚧  |
+| Goalie IQ++ | 🚧  |
 | WASM | 🚧  |
 | UI | 🚧  |
 | Graphics | 🚧 |
