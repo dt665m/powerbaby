@@ -7,9 +7,13 @@
   pointer-events: none;
 }
 
-@media (prefers-reduced-motion: no-preference) {
+/* @media (prefers-reduced-motion: no-preference) { */
+@media {
   .App-logo {
     animation: gelatine infinite 1.1s;
+    -webkit-animation: webkit-gelatine infinite 1.1s;
+    -moz-animation: moz-gelatine infinite 1.1s;
+    -o-animation: o-gelatine infinite 1.1s;
   }
 }
 
@@ -29,4 +33,25 @@
   25% { transform: scale(0.9, 1.1); }
   50% { transform: scale(1.1, 0.9); }
   75% { transform: scale(0.95, 1.05); }
+}
+
+@-webkit-keyframes webkit-gelatine {
+  from, to { -webkit-transform: scale(1, 1); }
+  25% { -webkit-transform: scale(0.9, 1.1); }
+  50% { -webkit-transform: scale(1.1, 0.9); }
+  75% { -webkit-transform: scale(0.95, 1.05); }
+}
+
+@-moz-keyframes moz-gelatine {
+  from, to { -moz-transform: scale(1, 1); }
+  25% { -moz-transform: scale(0.9, 1.1); }
+  50% { -moz-transform: scale(1.1, 0.9); }
+  75% { -moz-transform: scale(0.95, 1.05); }
+}
+
+@-o-keyframes o-gelatine {
+  from, to { -o-transform: scale(1, 1); }
+  25% { -o-transform: scale(0.9, 1.1); }
+  50% { -o-transform: scale(1.1, 0.9); }
+  75% { -o-transform: scale(0.95, 1.05); }
 }
