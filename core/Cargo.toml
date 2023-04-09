@@ -1,0 +1,11 @@
+[package]
+name = "powerbaby-core"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+bevy = { workspace = true }
+bevy_rapier3d = { workspace = true }
+bevy_turborand = { workspace = true }

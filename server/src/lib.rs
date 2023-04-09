@@ -1,3 +1,9 @@
+use core::{
+    components::{Ball, GoalieBehavior},
+    constants,
+    systems::{goalie, magnus_effect},
+};
+
 /// #NOTES
 /// Client controlled entity is handled like so:
 /// - Protocol needs to enable "client_authoritative_entities"
@@ -8,7 +14,7 @@
 /// fields.  The server then needs to query both entity's components and "mirror" the server's
 /// component with the client's component.
 /// - The server_entity will be replicated to other clients
-use crate::protocol::{
+use protocol::{
     self,
     channels::{EntityAssignmentChannel, PlayerCommandChannel},
     components::{EntityKind, RepPhysics, UpdateWith},
@@ -33,8 +39,7 @@ use naia_bevy_server::{
         UpdateComponentEvents,
     },
     transport::webrtc,
-    CommandsExt, Plugin as ServerPlugin, Random, ReceiveEvents, RoomKey, Server, ServerConfig,
-    UserKey,
+    CommandsExt, Plugin as ServerPlugin, ReceiveEvents, RoomKey, Server, ServerConfig, UserKey,
 };
 use naia_bevy_shared::BeforeReceiveEvents;
 
@@ -76,21 +81,21 @@ pub fn connect_events(
         info!("Naia Server connected to Client: {}", address);
 
         let ball_transform =
-            TransformBundle::from_transform(Transform::from_translation(crate::BALL_START));
+            TransformBundle::from_transform(Transform::from_translation(constants::BALL_START));
         let ball_velocity = Velocity::zero();
         let ball_rep_physics = RepPhysics::new_with(&ball_transform.local, &ball_velocity);
         let ball_entity = commands
             .spawn((
                 EntityKind::ball(),
-                crate::Ball::default(),
-                // Position::from(crate::BALL_START),
+                Ball::default(),
+                // Position::from(constants::BALL_START),
                 ball_rep_physics,
-                TransformBundle::from_transform(Transform::from_translation(crate::BALL_START)),
+                TransformBundle::from_transform(Transform::from_translation(constants::BALL_START)),
                 RigidBody::Dynamic,
                 // Group2 is the ball group.  Group1 is the goal/goalie group
                 CollisionGroups::new(Group::GROUP_2, Group::GROUP_1),
-                Collider::ball(crate::BALL_RADIUS),
-                ColliderMassProperties::Mass(crate::BALL_MASS),
+                Collider::ball(constants::BALL_RADIUS),
+                ColliderMassProperties::Mass(constants::BALL_MASS),
                 ball_velocity,
                 Friction::new(5.0),
                 ExternalForce::default(),
@@ -126,12 +131,12 @@ pub fn connect_events(
 
 // Destroy User's entities
 pub fn disconnect_events(
-    mut commands: Commands,
-    mut server: Server,
-    mut global: ResMut<Global>,
+    // mut commands: Commands,
+    // mut server: Server,
+    // mut global: ResMut<Global>,
     mut event_reader: EventReader<DisconnectEvent>,
 ) {
-    for DisconnectEvent(user_key, user) in event_reader.iter() {
+    for DisconnectEvent(_user_key, user) in event_reader.iter() {
         info!("Naia Server disconnected from: {:?}", user.address);
 
         // if let Some(entity) = global.user_to_square_map.remove(user_key) {
@@ -151,7 +156,7 @@ pub fn error_events(mut event_reader: EventReader<ErrorEvent>) {
 
 pub fn tick_events(
     mut server: Server,
-    mut ball_query: Query<(&mut Transform, &mut crate::Ball, &mut ExternalImpulse)>,
+    mut ball_query: Query<(&mut Transform, &mut Ball, &mut ExternalImpulse)>,
     mut tick_reader: EventReader<TickEvent>,
 ) {
     let mut has_ticked = false;
@@ -203,13 +208,13 @@ pub fn despawn_entity_events(mut event_reader: EventReader<DespawnEntityEvent>) 
 }
 
 pub fn insert_component_events(
-    mut commands: Commands,
-    mut server: Server,
-    mut global: ResMut<Global>,
+    // mut commands: Commands,
+    // mut server: Server,
+    // mut global: ResMut<Global>,
     mut event_reader: EventReader<InsertComponentEvents>,
     // position_query: Query<&Position>,
 ) {
-    for events in event_reader.iter() {
+    for _events in event_reader.iter() {
         // for (user_key, client_entity) in events.read::<Position>() {
         //     info!("insert component into client entity");
         // }
@@ -217,11 +222,11 @@ pub fn insert_component_events(
 }
 
 pub fn update_component_events(
-    global: ResMut<Global>,
+    // global: ResMut<Global>,
     mut event_reader: EventReader<UpdateComponentEvents>,
     // mut position_query: Query<&mut Position>,
 ) {
-    for events in event_reader.iter() {
+    for _events in event_reader.iter() {
         // for (_user_key, client_entity) in events.read::<Position>() {
         //     info!("client authoritative entity component update")
         // }
@@ -229,7 +234,7 @@ pub fn update_component_events(
 }
 
 pub fn remove_component_events(mut event_reader: EventReader<RemoveComponentEvents>) {
-    for events in event_reader.iter() {
+    for _events in event_reader.iter() {
         // for (_user_key, _entity, _component) in events.read::<Position>() {
         //     info!("removed Position component from client entity");
         // }
@@ -239,7 +244,7 @@ pub fn remove_component_events(mut event_reader: EventReader<RemoveComponentEven
 pub fn process_ball_command(
     key_command: KeyCommand,
     transform: &mut Transform,
-    ball: &mut crate::Ball,
+    ball: &mut Ball,
     ext_i: &mut ExternalImpulse,
 ) {
     if key_command.reset && ball.shot && !ball.scored {
@@ -270,7 +275,7 @@ pub fn process_ball_command(
 
 pub fn ball_score(
     mut collision_events: EventReader<CollisionEvent>,
-    mut ball_query: Query<&mut crate::Ball>,
+    mut ball_query: Query<&mut Ball>,
 ) {
     for event in collision_events.iter() {
         // log::info!("Received collision event: {:?}", event);
@@ -285,7 +290,7 @@ pub fn ball_reset(
     time: Res<Time>,
     mut ball_query: Query<(
         &mut Transform,
-        &mut crate::Ball,
+        &mut Ball,
         &mut ExternalForce,
         &mut ExternalImpulse,
         &mut Velocity,
@@ -296,14 +301,14 @@ pub fn ball_reset(
             ball.shot_elapsed += time.delta_seconds();
         }
 
-        if ball.shot_elapsed >= crate::BALL_SHOT_WAIT_TIME
+        if ball.shot_elapsed >= constants::BALL_SHOT_WAIT_TIME
             || ball.force_reset
             || (ball.scored && ball.shot_elapsed >= 2.0)
         {
             *ext_f = ExternalForce::default();
             *ext_i = ExternalImpulse::default();
             *velocity = Velocity::zero();
-            *transform = Transform::from_translation(crate::BALL_START);
+            *transform = Transform::from_translation(constants::BALL_START);
             ball.shot = false;
             ball.scored = false;
             ball.force_reset = false;
@@ -319,74 +324,15 @@ pub fn sync_physics(mut query: Query<(&Transform, &Velocity, &mut RepPhysics)>) 
     }
 }
 
-// pub fn ball_sync(mut pos_query: Query<(&Transform, &mut Position, &crate::Ball)>) {
-//     for (transform, mut rep, _) in pos_query.iter_mut() {
-//         *rep.x = transform.translation.x;
-//         *rep.y = transform.translation.y;
-//         *rep.z = transform.translation.z;
-//     }
-// }
-
-pub fn goalie(
-    time: Res<Time>,
-    mut goalie_query: Query<(&mut Transform, &mut crate::GoalieBehavior), Without<ExternalImpulse>>,
-    ball_query: Query<(&Transform, &crate::Ball), With<ExternalImpulse>>,
-    mut rand: ResMut<GlobalRng>,
-) {
-    const SPEED: &[f32] = &[1.5, 2.0, 3.0, 4.0];
-    const ACTION_TIMES: &[f32] = &[0.1, 0.01, 0.15, 0.05];
-    const DIRECTION: &[f32] = &[0.0, 1.0, -1.0];
-
-    let (mut goalie_transform, mut goalie) = goalie_query.get_single_mut().unwrap();
-
-    // filter by balls that are 2.0 units or less away from the goalie
-    // Then sort them by the MIN z axis to find the closest ball
-    // to the goalie.  We then move the goalie towards the ball (if it exists).  Otherwise
-    // move normally if nothing was found.
-    let new_goalie_pos = ball_query
-        .iter()
-        .filter(|(q, _)| {
-            let dist = q.translation.z - goalie_transform.translation.z;
-            dist < 6.0 && dist > 0.0
-        })
-        .min_by(|a, b| a.0.translation.z.partial_cmp(&b.0.translation.z).unwrap())
-        .map(|q| {
-            let to_x = q.0.translation.x - goalie_transform.translation.x;
-            let speed = goalie.speed * 3.0;
-            goalie_transform.translation.x + to_x * speed * crate::TIME_STEP
-        })
-        .unwrap_or_else(|| {
-            goalie_transform.translation.x + goalie.direction * goalie.speed * crate::TIME_STEP
-        });
-    goalie_transform.translation.x =
-        new_goalie_pos.clamp(crate::GOALIE_PATROL_MIN_X, crate::GOALIE_PATROL_MAX_X);
-
-    // Reroll period
-    goalie.seconds_left -= time.delta_seconds();
-    if goalie.seconds_left <= 0.0 {
-        let rand = rand.get_mut();
-        goalie.seconds_left = *rand.sample(ACTION_TIMES).unwrap();
-        goalie.speed = *rand.sample(SPEED).unwrap();
-
-        match goalie_transform.translation.x {
-            x if x == crate::GOALIE_PATROL_MIN_X => goalie.direction = 1.0,
-            x if x == crate::GOALIE_PATROL_MAX_X => goalie.direction = -1.0,
-            _ => {
-                goalie.direction = *rand.sample(DIRECTION).unwrap();
-            }
-        }
-    }
-}
-
 pub fn init(
     mut commands: Commands,
     mut server: Server,
-    mut rapier_config: ResMut<RapierConfiguration>,
+    // mut rapier_config: ResMut<RapierConfiguration>,
 ) {
     info!("Naia Bevy Server Demo init");
 
     // rapier_config.timestep_mode = TimestepMode::Fixed {
-    //     // dt: crate::TIME_STEP,
+    //     // dt: constants::TIME_STEP,
     //     dt: 1.0 / 30.0,
     //     substeps: 1,
     // };
@@ -430,15 +376,15 @@ pub fn init_physics(
     //ground never changes.
     commands.spawn((
         Name::new("Ground"),
-        TransformBundle::from(Transform::from_xyz(0.0, crate::GROUND_HEIGHT, 0.0)),
-        Collider::cuboid(crate::GROUND_SIZE, 0.0, crate::GROUND_SIZE),
+        TransformBundle::from(Transform::from_xyz(0.0, constants::GROUND_HEIGHT, 0.0)),
+        Collider::cuboid(constants::GROUND_SIZE, 0.0, constants::GROUND_SIZE),
         RigidBody::KinematicPositionBased,
         Friction::new(100.0),
     ));
 
     // Create a goal rigid-body with multiple colliders attached, using Bevy hierarchy.
     let x = 0.0;
-    let y = crate::GROUND_HEIGHT;
+    let y = constants::GROUND_HEIGHT;
     let z = 32.0;
     let rad = 0.2;
     commands
@@ -474,20 +420,20 @@ pub fn init_physics(
         });
 
     let goalie_transform =
-        TransformBundle::from_transform(Transform::from_translation(crate::GOALIE_START));
+        TransformBundle::from_transform(Transform::from_translation(constants::GOALIE_START));
     let goalie_velocity = Velocity::zero();
     let goalie_rep_physics = RepPhysics::new_with(&goalie_transform.local, &goalie_velocity);
     let goalie = commands
         .spawn((
             Name::new("Goalie"),
             EntityKind::goalie(),
-            crate::GoalieBehavior::default(),
+            GoalieBehavior::default(),
             goalie_rep_physics,
             // Sensor,
-            TransformBundle::from_transform(Transform::from_translation(crate::GOALIE_START)),
+            TransformBundle::from_transform(Transform::from_translation(constants::GOALIE_START)),
             RigidBody::KinematicPositionBased,
             CollisionGroups::new(Group::GROUP_1, Group::GROUP_2),
-            Collider::capsule_y(crate::GOALIE_HEIGHT * 0.5, crate::GOALIE_RADIUS),
+            Collider::capsule_y(constants::GOALIE_HEIGHT * 0.5, constants::GOALIE_RADIUS),
             GravityScale::default(),
             Damping {
                 linear_damping: 1.0,
@@ -553,9 +499,9 @@ pub fn run() {
                 .in_set(ReceiveEvents),
         )
         // .configure_set(ReceiveEvents.after(PhysicsSet::Writeback))
-        .insert_resource(FixedTime::new_from_secs(crate::TIME_STEP))
+        .insert_resource(FixedTime::new_from_secs(constants::TIME_STEP))
         .edit_schedule(CoreSchedule::FixedUpdate, |schedule| {
-            schedule.add_systems((goalie, crate::magnus_effect).after(PhysicsSet::Writeback));
+            schedule.add_systems((goalie, magnus_effect).after(PhysicsSet::Writeback));
         })
         .add_systems((sync_physics, ball_reset, ball_score).in_set(BeforeReceiveEvents))
         .run();

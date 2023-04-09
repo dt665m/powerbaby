@@ -4,7 +4,8 @@ use messages::MessagesPlugin;
 
 use std::time::Duration;
 
-use naia_bevy_shared::{LinkConditionerConfig, Protocol};
+// use naia_bevy_shared::{LinkConditionerConfig, Protocol};
+use naia_bevy_shared::Protocol;
 
 // Protocol Build
 pub fn protocol() -> Protocol {
@@ -79,7 +80,7 @@ pub mod primitives {
 pub mod messages {
     use super::primitives::Vec3;
 
-    use naia_bevy_shared::{EntityProperty, Message, Property, Protocol, ProtocolPlugin, Serde};
+    use naia_bevy_shared::{EntityProperty, Message, Protocol, ProtocolPlugin};
 
     // Plugin
     pub struct MessagesPlugin;

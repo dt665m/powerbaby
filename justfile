@@ -20,6 +20,10 @@ semver:
 build:
     cargo build --release
 
+build-wasm:
+    cargo build --profile wasm-release --target wasm32-unknown-unknown --bin pbc 
+    wasm-bindgen --out-dir ./target/out/ --target web ./target/wasm32-unknown-unknown/wasm-release/pbc.wasm
+
 client:
     target/release/powerbaby client
 
@@ -28,6 +32,8 @@ server:
 
 single:
     target/release/powerbaby single
-    
+
+wasm:
+    CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-server-runner cargo run --profile wasm-release --bin pbc --target wasm32-unknown-unknown
 
 #NOTE zld did not install using `brew install zld` due to missing xcodebuild/xcode-select

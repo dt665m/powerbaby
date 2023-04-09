@@ -1,0 +1,17 @@
+[package]
+name = "powerbaby-server"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+core = { package = "powerbaby-core", path = "../core" }
+protocol = { package = "powerbaby-protocol", path = "../protocol" }
+
+log = { workspace = true }
+bevy = { workspace = true }
+bevy_rapier3d = { workspace = true }
+bevy_turborand = { workspace = true }
+naia-bevy-shared = { workspace = true }
+naia-bevy-server = { workspace = true }

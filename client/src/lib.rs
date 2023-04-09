@@ -1,3 +1,4 @@
+use core::constants::*;
 /// # TODO
 /// - goalie jump or bobble or shield (probably shield?)
 /// - asset loading
@@ -16,7 +17,7 @@
 ///     engine.  (this is hard/unknown for bevy_rapier.  Not sure how to do this but the ball
 ///     basically needs to fly as if it was bounced off at that past point, into the future
 ///     somehow.  The current physics will need to keep moving forward)
-use crate::protocol::messages::{Auth, KeyCommand};
+use protocol::messages::{Auth, KeyCommand};
 
 use std::f32::consts::*;
 
@@ -73,7 +74,7 @@ pub fn init(
     let socket = webrtc::Socket::new("http://127.0.0.1:14191", client.socket_config());
     client.connect(socket);
 
-    let ball_texture_handle = images.add(crate::uv_debug_texture());
+    let ball_texture_handle = images.add(core::debug::uv_texture());
     // Setup Global Resource
     let mut global = Global::default();
     global.ball_texture = ball_texture_handle.clone();
@@ -94,7 +95,7 @@ pub fn init(
     });
 
     commands.spawn((Camera3dBundle {
-        transform: crate::KICK_CAM.looking_at(crate::KICK_CAM_LOOK, Vec3::Y),
+        transform: KICK_CAM.looking_at(KICK_CAM_LOOK, Vec3::Y),
         ..Default::default()
     },));
 
@@ -116,12 +117,12 @@ pub fn init(
             .spawn((
                 Name::new("Ground"),
                 PbrBundle {
-                    mesh: meshes.add(shape::Plane::from_size(crate::GROUND_SIZE * 2.0).into()),
+                    mesh: meshes.add(shape::Plane::from_size(GROUND_SIZE * 2.0).into()),
                     material: ground_material,
-                    transform: Transform::from_xyz(0.0, crate::GROUND_HEIGHT, 0.0),
+                    transform: Transform::from_xyz(0.0, GROUND_HEIGHT, 0.0),
                     ..default()
                 },
-                Collider::cuboid(crate::GROUND_SIZE, 0.0, crate::GROUND_SIZE),
+                Collider::cuboid(GROUND_SIZE, 0.0, GROUND_SIZE),
                 RigidBody::KinematicPositionBased,
                 Friction::new(100.0),
             ))
@@ -129,7 +130,7 @@ pub fn init(
     );
 
     let x = 0.0;
-    let y = crate::GROUND_HEIGHT;
+    let y = GROUND_HEIGHT;
     let z = 32.0;
     let rad = 0.2;
     commands
@@ -216,9 +217,6 @@ mod components {
 
     #[derive(Component)]
     pub struct Confirmed;
-
-    #[derive(Component)]
-    pub struct LocalCursor;
 
     #[derive(Default, Component)]
     pub struct InterpPos {
@@ -360,30 +358,32 @@ mod components {
 }
 
 mod events {
+    use super::components::{Confirmed, InterpPos, InterpRot, Predicted};
+    use super::{Global, OwnedEntity};
+    use core::{components::Ball, constants::*};
+
+    use protocol::{
+        channels::{EntityAssignmentChannel, PlayerCommandChannel},
+        components::{EntityKind, EntityKindValue, RepPhysics, UpdateWith},
+        messages::{EntityAssignment, KeyCommand},
+    };
+
     use bevy::{pbr::NotShadowReceiver, prelude::*};
     use bevy_rapier3d::prelude::*;
 
+    //sequence_greater_than, Tick
     use naia_bevy_client::{
         events::{
             ClientTickEvent, ConnectEvent, DespawnEntityEvent, DisconnectEvent,
             InsertComponentEvents, MessageEvents, RejectEvent, RemoveComponentEvents,
             SpawnEntityEvent, UpdateComponentEvents,
         },
-        sequence_greater_than, Client, CommandsExt, Random, Replicate, Tick,
+        Client, CommandsExt,
     };
-
-    use crate::protocol::{
-        channels::{EntityAssignmentChannel, PlayerCommandChannel},
-        components::{EntityKind, EntityKindValue, RepPhysics, UpdateWith},
-        messages::{EntityAssignment, KeyCommand},
-    };
-
-    use super::components::{Confirmed, InterpPos, InterpRot, LocalCursor, Predicted};
-    use super::{Global, OwnedEntity};
 
     pub fn connect_events(
         // mut commands: Commands,
-        mut client: Client,
+        client: Client,
         // mut global: ResMut<Global>,
         mut event_reader: EventReader<ConnectEvent>,
     ) {
@@ -480,7 +480,7 @@ mod events {
                                 PbrBundle {
                                     mesh: meshes.add(
                                         shape::UVSphere {
-                                            radius: crate::BALL_RADIUS,
+                                            radius: BALL_RADIUS,
                                             sectors: 36,
                                             stacks: 18,
                                         }
@@ -497,8 +497,8 @@ mod events {
                                     ..default()
                                 },
                                 RigidBody::Dynamic,
-                                Collider::ball(crate::BALL_RADIUS),
-                                ColliderMassProperties::Mass(crate::BALL_MASS),
+                                Collider::ball(BALL_RADIUS),
+                                ColliderMassProperties::Mass(BALL_MASS),
                                 Velocity::zero(),
                                 Friction::new(5.0),
                                 ExternalForce::default(),
@@ -573,9 +573,9 @@ mod events {
                             PbrBundle {
                                 mesh: meshes.add(
                                     shape::Capsule {
-                                        radius: crate::GOALIE_RADIUS,
+                                        radius: GOALIE_RADIUS,
                                         rings: 0,
-                                        depth: crate::GOALIE_HEIGHT,
+                                        depth: GOALIE_HEIGHT,
                                         latitudes: 16,
                                         longitudes: 32,
                                         uv_profile: shape::CapsuleUvProfile::Aspect,
@@ -585,8 +585,8 @@ mod events {
                                 material: global.debug_material.clone(),
                                 transform: Transform::from_xyz(
                                     *rep_physics.translation_x,
-                                    crate::GOALIE_START.y,
-                                    crate::GOALIE_START.z,
+                                    GOALIE_START.y,
+                                    GOALIE_START.z,
                                 ),
                                 ..default()
                             },
@@ -607,11 +607,11 @@ mod events {
                     EntityKindValue::Ball => {
                         commands.entity(entity).insert((
                             Name::new("Ball"),
-                            crate::Ball::default(),
+                            Ball::default(),
                             PbrBundle {
                                 mesh: meshes.add(
                                     shape::UVSphere {
-                                        radius: crate::BALL_RADIUS,
+                                        radius: BALL_RADIUS,
                                         sectors: 36,
                                         stacks: 18,
                                     }
@@ -651,8 +651,8 @@ mod events {
     }
 
     pub fn update_component_events(
-        mut global: ResMut<Global>,
-        mut event_reader: EventReader<UpdateComponentEvents>,
+        // mut global: ResMut<Global>,
+        mut _event_reader: EventReader<UpdateComponentEvents>,
         // mut position_query: Query<&mut Position>,
     ) {
         // When we receive a new Position update for the Player's Entity,
@@ -702,7 +702,7 @@ mod events {
     }
 
     pub fn remove_component_events(mut event_reader: EventReader<RemoveComponentEvents>) {
-        for events in event_reader.iter() {
+        for _events in event_reader.iter() {
             // for (_entity, _component) in events.read::<Position>() {
             //     info!("removed Position component from entity");
             // }
@@ -715,7 +715,7 @@ mod events {
         mut tick_reader: EventReader<ClientTickEvent>,
         // mut position_query: Query<&mut Position>,
     ) {
-        let Some(predicted_entity) = global
+        let Some(_predicted_entity) = global
             .owned_entity
             .as_ref()
             .map(|owned_entity| owned_entity.predicted) else {
@@ -749,12 +749,13 @@ mod events {
 }
 
 mod input {
+    use super::components::Confirmed;
     use super::Global;
+    use core::constants::*;
+    use protocol::messages::KeyCommand;
+
     use bevy::{prelude::*, render::camera::RenderTarget, window::PrimaryWindow};
     use bevy_rapier3d::prelude::*;
-
-    use super::components::Confirmed;
-    use crate::protocol::messages::KeyCommand;
     use naia_bevy_client::Client;
 
     pub fn camera(
@@ -769,21 +770,20 @@ mod input {
         if keyboard_input.just_pressed(KeyCode::C) {
             global.camera_is_birdseye = !global.camera_is_birdseye;
             if global.camera_is_birdseye {
-                *camera_transform =
-                    crate::BIRDS_EYE_CAM.looking_at(crate::BIRDS_EYE_CAM_LOOK, Vec3::Y);
+                *camera_transform = BIRDS_EYE_CAM.looking_at(BIRDS_EYE_CAM_LOOK, Vec3::Y);
             } else {
-                *camera_transform = crate::KICK_CAM.looking_at(crate::KICK_CAM_LOOK, Vec3::Y);
+                *camera_transform = KICK_CAM.looking_at(KICK_CAM_LOOK, Vec3::Y);
             }
         }
 
         if keyboard_input.pressed(KeyCode::Left) {
             camera_transform.rotate_around(
-                crate::BALL_START,
+                BALL_START,
                 Quat::from_euler(EulerRot::XYZ, 0.0, time.delta_seconds(), 0.0),
             );
         } else if keyboard_input.pressed(KeyCode::Right) {
             camera_transform.rotate_around(
-                crate::BALL_START,
+                BALL_START,
                 Quat::from_euler(EulerRot::XYZ, 0.0, -time.delta_seconds(), 0.0),
             );
         }
@@ -877,13 +877,12 @@ mod input {
 }
 
 pub mod sync {
+    use super::components::{Confirmed, InterpPos, InterpRot};
+    use protocol::components::{RepPhysics, UpdateWith};
+
     use bevy::prelude::*;
     use bevy_rapier3d::prelude::*;
-
-    use crate::protocol::components::{RepPhysics, UpdateWith};
     use naia_bevy_client::Client;
-
-    use super::components::{Confirmed, InterpPos, InterpRot, Predicted};
 
     pub fn serverside_entities(
         client: Client,
@@ -996,7 +995,7 @@ pub fn run() {
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(NaiaClientPlugin::new(
             ClientConfig::default(),
-            crate::protocol::protocol(),
+            protocol::protocol(),
         ))
         // Background Color
         // .insert_resource(ClearColor(Color::BLACK))
