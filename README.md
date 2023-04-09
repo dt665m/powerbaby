@@ -32,12 +32,10 @@ cargo build --release
 # in terminal 1
 target/release/powerbaby server
 
-# in 'n' terminals (requires wasm-server-runner to be installed)
-# navigate to the loaded webserver after compilation
+# in another terminal (requires wasm-server-runner to be installed)
 CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-server-runner cargo run --profile wasm-release --bin pbc --target wasm32-unknown-unknown
+# navigate to the loaded webserver after compilation
 ```
-
-
 
 ## Roadmap
 🚧 = In Progress
