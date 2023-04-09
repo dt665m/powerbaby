@@ -35,4 +35,3 @@ target/release/powerbaby client
 | UI | 🚧  |
 | Graphics | 🚧 |
 | Sound Effects / Music| 🚧 |
-

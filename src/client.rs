@@ -1,9 +1,4 @@
-///Just run X milliseconds of physics simulation per Tick,
-///on both Client and Server Ticks. Then take resulting data out of Rapier and
-///update networked Components. Updated Components automatically sync to remote ECS world if they are in-scope.
-///
 /// # TODO
-/// - move from Position to RepPhysics (since there are no rotations on the ball right now)
 /// - goalie jump or bobble or shield (probably shield?)
 /// - asset loading
 /// - render unowned balls names (nice to have?)
@@ -225,8 +220,8 @@ mod components {
     #[derive(Component)]
     pub struct LocalCursor;
 
-    #[derive(Component)]
-    pub struct Interp {
+    #[derive(Default, Component)]
+    pub struct InterpPos {
         interp: f32,
 
         pub interp_x: f32,
@@ -242,7 +237,7 @@ mod components {
         pub next_z: f32,
     }
 
-    impl Interp {
+    impl InterpPos {
         pub fn new(x: f32, y: f32, z: f32) -> Self {
             Self {
                 interp: 0.0,
@@ -261,7 +256,7 @@ mod components {
             }
         }
 
-        pub(crate) fn next_position(&mut self, next_x: f32, next_y: f32, next_z: f32) {
+        pub(crate) fn next(&mut self, next_x: f32, next_y: f32, next_z: f32) {
             self.interp = 0.0;
             self.last_x = self.next_x;
             self.last_y = self.next_y;
@@ -288,6 +283,80 @@ mod components {
             }
         }
     }
+
+    #[derive(Default, Component)]
+    pub struct InterpRot {
+        interp: f32,
+
+        pub interp_x: f32,
+        pub interp_y: f32,
+        pub interp_z: f32,
+        pub interp_w: f32,
+
+        last_x: f32,
+        last_y: f32,
+        last_z: f32,
+        last_w: f32,
+
+        pub next_x: f32,
+        pub next_y: f32,
+        pub next_z: f32,
+        pub next_w: f32,
+    }
+
+    impl InterpRot {
+        pub fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
+            Self {
+                interp: 0.0,
+
+                interp_x: x,
+                interp_y: y,
+                interp_z: z,
+                interp_w: w,
+
+                last_x: x,
+                last_y: y,
+                last_z: z,
+                last_w: w,
+
+                next_x: x,
+                next_y: y,
+                next_z: z,
+                next_w: w,
+            }
+        }
+
+        pub(crate) fn next(&mut self, next_x: f32, next_y: f32, next_z: f32, next_w: f32) {
+            self.interp = 0.0;
+            self.last_x = self.next_x;
+            self.last_y = self.next_y;
+            self.last_z = self.next_z;
+            self.last_w = self.next_w;
+
+            self.interp_x = self.next_x;
+            self.interp_y = self.next_y;
+            self.interp_z = self.next_z;
+            self.interp_w = self.next_w;
+
+            self.next_x = next_x;
+            self.next_y = next_y;
+            self.next_z = next_z;
+            self.next_w = next_w;
+        }
+
+        pub(crate) fn interpolate(&mut self, interpolation: f32) {
+            if self.interp >= 1.0 || interpolation == 0.0 {
+                return;
+            }
+            if self.interp < interpolation {
+                self.interp = interpolation;
+                self.interp_x = self.last_x + (self.next_x - self.last_x) * self.interp;
+                self.interp_y = self.last_y + (self.next_y - self.last_y) * self.interp;
+                self.interp_z = self.last_z + (self.next_z - self.last_z) * self.interp;
+                self.interp_w = self.last_w + (self.next_w - self.last_w) * self.interp;
+            }
+        }
+    }
 }
 
 mod events {
@@ -305,11 +374,11 @@ mod events {
 
     use crate::protocol::{
         channels::{EntityAssignmentChannel, PlayerCommandChannel},
-        components::{EntityKind, EntityKindValue, Position},
+        components::{EntityKind, EntityKindValue, RepPhysics, UpdateWith},
         messages::{EntityAssignment, KeyCommand},
     };
 
-    use super::components::{Confirmed, Interp, LocalCursor, Predicted};
+    use super::components::{Confirmed, InterpPos, InterpRot, LocalCursor, Predicted};
     use super::{Global, OwnedEntity};
 
     pub fn connect_events(
@@ -379,7 +448,7 @@ mod events {
         mut commands: Commands,
         mut event_reader: EventReader<MessageEvents>,
 
-        ball_query: Query<(&Position, &Handle<StandardMaterial>)>,
+        ball_query: Query<(&RepPhysics, &Handle<StandardMaterial>)>,
     ) {
         for events in event_reader.iter() {
             for message in events.read::<EntityAssignmentChannel, EntityAssignment>() {
@@ -389,7 +458,7 @@ mod events {
                     info!("entityassignment ownership");
 
                     // Here we create a local copy of the Player entity, to use for client-side prediction
-                    if let Ok((pos, mat_handle)) = ball_query.get(entity) {
+                    if let Ok((rep_physics, mat_handle)) = ball_query.get(entity) {
                         //change the owned_confirmed entity (server side) to a transparent red
                         let confirmed_ball_mat = materials.get_mut(mat_handle).unwrap();
                         confirmed_ball_mat.base_color.set_a(1.0);
@@ -402,6 +471,8 @@ mod events {
                         // confirmed_ball_mat.unlit = true;
 
                         //add physics ball for clicking, eventually use it for prediction?
+                        let mut prediction_transform = Transform::default();
+                        prediction_transform.update_with(rep_physics);
                         let prediction_entity = commands
                             .entity(entity)
                             .duplicate()
@@ -422,7 +493,7 @@ mod events {
                                     //     alpha_mode: AlphaMode::Blend,
                                     //     ..default()
                                     // }),
-                                    transform: Transform::from_xyz(*pos.x, *pos.y, *pos.z),
+                                    transform: prediction_transform,
                                     ..default()
                                 },
                                 RigidBody::Dynamic,
@@ -486,13 +557,13 @@ mod events {
         mut event_reader: EventReader<InsertComponentEvents>,
 
         kind_query: Query<&EntityKind>,
-        pos_query: Query<&Position>,
+        rep_physics_query: Query<&RepPhysics>,
     ) {
         for events in event_reader.iter() {
             log::info!("insert component events");
-            for entity in events.read::<Position>() {
+            for entity in events.read::<RepPhysics>() {
                 let kind = kind_query.get(entity).unwrap();
-                let pos = pos_query.get(entity).unwrap();
+                let rep_physics = rep_physics_query.get(entity).unwrap();
 
                 log::info!("entity: {:?}", *kind.value);
                 match *kind.value {
@@ -513,13 +584,23 @@ mod events {
                                 ),
                                 material: global.debug_material.clone(),
                                 transform: Transform::from_xyz(
-                                    *pos.x,
+                                    *rep_physics.translation_x,
                                     crate::GOALIE_START.y,
                                     crate::GOALIE_START.z,
                                 ),
                                 ..default()
                             },
-                            Interp::new(*pos.x, *pos.y, *pos.z),
+                            InterpPos::new(
+                                *rep_physics.translation_x,
+                                *rep_physics.translation_y,
+                                *rep_physics.translation_z,
+                            ),
+                            InterpRot::new(
+                                *rep_physics.rotation_x,
+                                *rep_physics.rotation_y,
+                                *rep_physics.rotation_z,
+                                *rep_physics.rotation_w,
+                            ),
                             Confirmed,
                         ));
                     }
@@ -542,10 +623,24 @@ mod events {
                                     alpha_mode: AlphaMode::Blend,
                                     ..default()
                                 }),
-                                transform: Transform::from_xyz(*pos.x, *pos.y, *pos.z),
+                                transform: Transform::from_xyz(
+                                    *rep_physics.translation_x,
+                                    *rep_physics.translation_y,
+                                    *rep_physics.translation_z,
+                                ),
                                 ..default()
                             },
-                            Interp::new(*pos.x, *pos.y, *pos.z),
+                            InterpPos::new(
+                                *rep_physics.translation_x,
+                                *rep_physics.translation_y,
+                                *rep_physics.translation_z,
+                            ),
+                            InterpRot::new(
+                                *rep_physics.rotation_x,
+                                *rep_physics.rotation_y,
+                                *rep_physics.rotation_z,
+                                *rep_physics.rotation_w,
+                            ),
                             NotShadowReceiver,
                             Confirmed,
                         ));
@@ -783,22 +878,30 @@ mod input {
 
 pub mod sync {
     use bevy::prelude::*;
+    use bevy_rapier3d::prelude::*;
 
-    use crate::protocol::components::Position;
+    use crate::protocol::components::{RepPhysics, UpdateWith};
     use naia_bevy_client::Client;
 
-    use super::components::{Confirmed, Interp, Predicted};
+    use super::components::{Confirmed, InterpPos, InterpRot, Predicted};
 
     pub fn serverside_entities(
         client: Client,
-        mut query: Query<(&Position, &mut Interp, &mut Transform), With<Confirmed>>,
+        mut query: Query<
+            (&RepPhysics, &mut InterpPos, &mut InterpRot, &mut Transform),
+            With<Confirmed>,
+        >,
     ) {
-        for (position, mut interp, mut transform) in query.iter_mut() {
-            if *position.x != interp.next_x
-                || *position.y != interp.next_y
-                || *position.z != interp.next_z
+        for (rep_physics, mut interp, mut interp_rot, mut transform) in query.iter_mut() {
+            if *rep_physics.translation_x != interp.next_x
+                || *rep_physics.translation_y != interp.next_y
+                || *rep_physics.translation_z != interp.next_z
             {
-                interp.next_position(*position.x, *position.y, *position.z);
+                interp.next(
+                    *rep_physics.translation_x,
+                    *rep_physics.translation_y,
+                    *rep_physics.translation_z,
+                );
             }
 
             let interp_amount = client.server_interpolation().unwrap();
@@ -806,6 +909,39 @@ pub mod sync {
             transform.translation.x = interp.interp_x;
             transform.translation.y = interp.interp_y;
             transform.translation.z = interp.interp_z;
+
+            if *rep_physics.rotation_x != interp_rot.next_x
+                || *rep_physics.rotation_y != interp_rot.next_y
+                || *rep_physics.rotation_z != interp_rot.next_z
+                || *rep_physics.rotation_w != interp_rot.next_w
+            {
+                interp_rot.next(
+                    *rep_physics.rotation_x,
+                    *rep_physics.rotation_y,
+                    *rep_physics.rotation_z,
+                    *rep_physics.rotation_w,
+                );
+            }
+
+            interp_rot.interpolate(interp_amount);
+            transform.rotation.x = interp_rot.interp_x;
+            transform.rotation.y = interp_rot.interp_y;
+            transform.rotation.z = interp_rot.interp_z;
+            transform.rotation.w = interp_rot.interp_w;
+        }
+    }
+
+    //sync rapier systems:
+    //It should run after rapier systems and before naia’s ‘ReceiveEvents’ set. And in the
+    //client the exactly opposite. Naia events, then sync system and then rapier systems.
+
+    // in client after naia 'ReceiveEvents' systems before physics systems
+    pub fn sync_from_naia_to_rapier(
+        mut query: Query<(&mut Transform, &mut Velocity, &RepPhysics)>,
+    ) {
+        for (mut transform, mut velocity, physics_properties) in query.iter_mut() {
+            transform.update_with(physics_properties);
+            velocity.update_with(physics_properties);
         }
     }
 

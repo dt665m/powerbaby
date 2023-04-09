@@ -23,34 +23,6 @@ pub fn protocol() -> Protocol {
         .build()
 }
 
-pub mod systems {
-    use bevy::prelude::*;
-    use bevy_rapier3d::prelude::*;
-
-    use super::components::{RepPhysics, UpdateWith};
-
-    //sync rapier systems:
-    //It should run after rapier systems and before naia’s ‘ReceiveEvents’ set. And in the
-    //client the exactly opposite. Naia events, then sync system and then rapier systems.
-
-    // in server after physics systems before naia 'ReceiveEvents' systems
-    pub fn sync_from_rapier_to_naia(mut query: Query<(&Transform, &Velocity, &mut RepPhysics)>) {
-        for (transform, velocity, mut physics_properties) in query.iter_mut() {
-            physics_properties.update_with((transform, velocity));
-        }
-    }
-
-    // in client after naia 'ReceiveEvents' systems before physics systems
-    pub fn sync_from_naia_to_rapier(
-        mut query: Query<(&mut Transform, &mut Velocity, &RepPhysics)>,
-    ) {
-        for (mut transform, mut velocity, physics_properties) in query.iter_mut() {
-            transform.update_with(physics_properties);
-            velocity.update_with(physics_properties);
-        }
-    }
-}
-
 pub mod channels {
     use naia_bevy_shared::{
         Channel, ChannelDirection, ChannelMode, Protocol, ProtocolPlugin, ReliableSettings,
@@ -82,7 +54,31 @@ pub mod channels {
     }
 }
 
+pub mod primitives {
+    use bevy::prelude::Vec3 as BevyVec3;
+    use naia_bevy_shared::Serde;
+
+    #[derive(Clone, PartialEq, Serde)]
+    pub struct Vec3 {
+        pub x: f32,
+        pub y: f32,
+        pub z: f32,
+    }
+
+    impl From<BevyVec3> for Vec3 {
+        fn from(b_vec3: BevyVec3) -> Self {
+            Self {
+                x: b_vec3.x,
+                y: b_vec3.y,
+                z: b_vec3.z,
+            }
+        }
+    }
+}
+
 pub mod messages {
+    use super::primitives::Vec3;
+
     use naia_bevy_shared::{EntityProperty, Message, Property, Protocol, ProtocolPlugin, Serde};
 
     // Plugin
@@ -94,23 +90,6 @@ pub mod messages {
                 .add_message::<Auth>()
                 .add_message::<EntityAssignment>()
                 .add_message::<KeyCommand>();
-        }
-    }
-
-    #[derive(Clone, PartialEq, Serde)]
-    pub struct Vec3 {
-        pub x: f32,
-        pub y: f32,
-        pub z: f32,
-    }
-
-    impl From<bevy::prelude::Vec3> for Vec3 {
-        fn from(b_vec3: bevy::prelude::Vec3) -> Self {
-            Self {
-                x: b_vec3.x,
-                y: b_vec3.y,
-                z: b_vec3.z,
-            }
         }
     }
 
@@ -173,7 +152,7 @@ pub mod components {
     impl ProtocolPlugin for ComponentsPlugin {
         fn build(&self, protocol: &mut Protocol) {
             protocol
-                .add_component::<Position>()
+                .add_component::<RepPhysics>()
                 .add_component::<EntityKind>();
         }
     }
@@ -206,6 +185,26 @@ pub mod components {
         pub angvel_x: Property<f32>,
         pub angvel_y: Property<f32>,
         pub angvel_z: Property<f32>,
+    }
+
+    impl RepPhysics {
+        pub fn new_with(transform: &Transform, velocity: &Velocity) -> Self {
+            Self::new_complete(
+                transform.translation.x,
+                transform.translation.y,
+                transform.translation.z,
+                transform.rotation.x,
+                transform.rotation.y,
+                transform.rotation.z,
+                transform.rotation.w,
+                velocity.linvel.x,
+                velocity.linvel.y,
+                velocity.linvel.z,
+                velocity.angvel.x,
+                velocity.angvel.y,
+                velocity.angvel.z,
+            )
+        }
     }
 
     impl UpdateWith<(&Transform, &Velocity)> for RepPhysics {
