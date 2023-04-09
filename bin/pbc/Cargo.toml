@@ -1,0 +1,11 @@
+[package]
+name = "pbc"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+client = { package = "powerbaby-client", path = "../../client" }
+console_error_panic_hook = "0.1"
+

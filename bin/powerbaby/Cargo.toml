@@ -1,0 +1,25 @@
+[package]
+name = "powerbaby"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+core = { package = "powerbaby-core", path = "../../core" }
+client = { package = "powerbaby-client", path = "../../client" }
+server = { package = "powerbaby-server", path = "../../server" }
+ 
+log = { workspace = true }
+bevy = { workspace = true }
+bevy_rapier3d = { workspace = true }
+iyes_progress = { workspace = true }
+bevy_turborand = { workspace = true }
+bevy-inspector-egui = { workspace = true }
+bevy-debug-text-overlay = { workspace = true, optional = true }
+
+clap = { version = "4", features = ["derive", "env", "cargo", "string"] }
+
+[features]
+default = ["debug"]
+debug = ["bevy-debug-text-overlay/debug"]
