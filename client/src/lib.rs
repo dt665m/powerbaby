@@ -618,7 +618,8 @@ mod events {
                                     .into(),
                                 ),
                                 material: materials.add(StandardMaterial {
-                                    base_color: Color::rgba(1.0, 1.0, 1.0, 0.2),
+                                    base_color: Color::rgba(1.0, 1.0, 1.0, 1.0),
+                                    // base_color: Color::rgba(1.0, 1.0, 1.0, 0.2),
                                     base_color_texture: Some(global.ball_texture.clone()),
                                     alpha_mode: AlphaMode::Blend,
                                     ..default()
@@ -794,6 +795,7 @@ mod input {
         client: Client,
         keyboard_input: Res<Input<KeyCode>>,
         mouse_buttons: ResMut<Input<MouseButton>>,
+        touches: Res<Touches>,
         ball_query: Query<&Transform, With<Confirmed>>,
 
         camera_query: Query<(&Camera, &Transform, &GlobalTransform)>,
@@ -829,6 +831,24 @@ mod input {
                 capture_ball_click(camera_query, window, rapier_context, &global.ground_entity)
                     .map(|(ray_normal, ray_point)| (ray_normal.into(), ray_point.into()))
             }
+            (true, false, false) => {
+                if let Some(pos) = touches.first_pressed_position() {
+                    capture_ball_touch(
+                        camera_query,
+                        window,
+                        pos,
+                        rapier_context,
+                        &global.ground_entity,
+                    )
+                    .map(|(ray_normal, ray_point)| (ray_normal.into(), ray_point.into()))
+                } else {
+                    None
+                }
+            }
+            // (true, false, false, ) => {
+            //     capture_ball_click(camera_query, window, rapier_context, &global.ground_entity)
+            //         .map(|(ray_normal, ray_point)| (ray_normal.into(), ray_point.into()))
+            // }
             _ => None,
         };
 
@@ -840,6 +860,36 @@ mod input {
             key_command.entity.set(&client, &owned_entity.confirmed);
             global.queued_command = Some(key_command);
         }
+    }
+
+    fn capture_ball_touch(
+        camera_query: Query<(&Camera, &Transform, &GlobalTransform)>,
+        window: Query<&Window, With<PrimaryWindow>>,
+        touch_pos: Vec2,
+        rapier_context: Res<RapierContext>,
+        ground_entity: &Option<Entity>,
+    ) -> Option<(Vec3, Vec3)> {
+        let (camera, _camera_transform, camera_global_transform) = camera_query.single();
+
+        // get the window that the camera is displaying to (or the primary window)
+        let window = if let RenderTarget::Window(_id) = camera.target {
+            window.single()
+        } else {
+            window.single()
+            // window.single().get_primary().unwrap()
+        };
+        let Some(ray) = camera.viewport_to_world(camera_global_transform, touch_to_cursor_pos(touch_pos, &window)) else {
+            log::info!("NO RAY FROM CAMERA");
+            return None
+        };
+
+        let filter = QueryFilter {
+            exclude_rigid_body: ground_entity.clone(),
+            ..Default::default()
+        };
+        rapier_context
+            .cast_ray_and_get_normal(ray.origin, ray.direction, 100.0, true, filter)
+            .map(|(_e, intersection)| (intersection.normal, intersection.point))
     }
 
     fn capture_ball_click(
@@ -862,7 +912,9 @@ mod input {
         // then, ask bevy to convert into world coordinates, and truncate to discard Z
         let Some(ray) = window
             .cursor_position()
-            .and_then(|cursor| camera.viewport_to_world(camera_global_transform, cursor))
+            .and_then(|cursor| {
+                info!("MOUSE CURSOR: {}", cursor);
+                camera.viewport_to_world(camera_global_transform, cursor)})
             else {
             return None
         };
@@ -873,6 +925,10 @@ mod input {
         rapier_context
             .cast_ray_and_get_normal(ray.origin, ray.direction, 100.0, true, filter)
             .map(|(_e, intersection)| (intersection.normal, intersection.point))
+    }
+
+    fn touch_to_cursor_pos(touch_pos: Vec2, window: &Window) -> Vec2 {
+        Vec2::new(touch_pos.x, window.resolution.height() - touch_pos.y)
     }
 }
 
@@ -980,7 +1036,7 @@ pub fn run() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Power, Baby! (ONLINE)".into(),
-                resolution: (960., 1080.).into(),
+                resolution: (1920., 1080.).into(),
                 fit_canvas_to_parent: true,
                 prevent_default_event_handling: false,
                 ..default()
@@ -1028,7 +1084,7 @@ pub fn run() {
         )
         .configure_set(Tick.after(ReceiveEvents))
         .configure_set(MainLoop.after(Tick))
-        .add_system(bevy::window::close_on_esc)
+        // .add_system(bevy::window::close_on_esc)
         // Run App
         .run();
 }

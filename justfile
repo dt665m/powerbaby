@@ -36,4 +36,13 @@ single:
 wasm:
     CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-server-runner cargo run --profile wasm-release --bin pbc --target wasm32-unknown-unknown
 
+wasm-opt:
+    wasm-opt -O -ol 100 -s 100 -o target/out/pbc_bg-opt.wasm pbc_bg.wasm
+
+build-website: build-wasm
+    cd website && yarn build && cp ../target/out/* build
+
+publish-website: build-website
+    cd website && yarn publish:site
+
 #NOTE zld did not install using `brew install zld` due to missing xcodebuild/xcode-select

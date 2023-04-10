@@ -4,7 +4,9 @@ function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <img src="/yoshiegg.png" className="App-logo" alt="logo" />
+        <a href="/game">
+          <img src="/yoshiegg.png" className="App-logo" alt="logo" />
+        </a>
       <p>Hatching Soon</p>
       </header>
     </div>
