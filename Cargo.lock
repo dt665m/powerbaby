@@ -3307,6 +3307,7 @@ dependencies = [
 [[package]]
 name = "naia-bevy-client"
 version = "0.20.1"
+source = "git+https://github.com/naia-lib/naia?rev=954f36e7dcb27be086951c0d3208bde34d552dba#954f36e7dcb27be086951c0d3208bde34d552dba"
 dependencies = [
  "bevy_app",
  "bevy_ecs",
@@ -3317,6 +3318,7 @@ dependencies = [
 [[package]]
 name = "naia-bevy-server"
 version = "0.20.0"
+source = "git+https://github.com/naia-lib/naia?rev=954f36e7dcb27be086951c0d3208bde34d552dba#954f36e7dcb27be086951c0d3208bde34d552dba"
 dependencies = [
  "bevy_app",
  "bevy_ecs",
@@ -3327,6 +3329,7 @@ dependencies = [
 [[package]]
 name = "naia-bevy-shared"
 version = "0.20.0"
+source = "git+https://github.com/naia-lib/naia?rev=954f36e7dcb27be086951c0d3208bde34d552dba#954f36e7dcb27be086951c0d3208bde34d552dba"
 dependencies = [
  "bevy_app",
  "bevy_ecs",
@@ -3336,6 +3339,7 @@ dependencies = [
 [[package]]
 name = "naia-client"
 version = "0.20.1"
+source = "git+https://github.com/naia-lib/naia?rev=954f36e7dcb27be086951c0d3208bde34d552dba#954f36e7dcb27be086951c0d3208bde34d552dba"
 dependencies = [
  "bevy_ecs",
  "cfg-if",
@@ -3347,6 +3351,7 @@ dependencies = [
 [[package]]
 name = "naia-client-socket"
 version = "0.20.1"
+source = "git+https://github.com/naia-lib/naia?rev=954f36e7dcb27be086951c0d3208bde34d552dba#954f36e7dcb27be086951c0d3208bde34d552dba"
 dependencies = [
  "cfg-if",
  "js-sys",
@@ -3364,6 +3369,7 @@ dependencies = [
 [[package]]
 name = "naia-derive"
 version = "0.19.1"
+source = "git+https://github.com/naia-lib/naia?rev=954f36e7dcb27be086951c0d3208bde34d552dba#954f36e7dcb27be086951c0d3208bde34d552dba"
 dependencies = [
  "naia-serde-derive",
  "proc-macro2",
@@ -3374,6 +3380,7 @@ dependencies = [
 [[package]]
 name = "naia-serde"
 version = "0.18.0"
+source = "git+https://github.com/naia-lib/naia?rev=954f36e7dcb27be086951c0d3208bde34d552dba#954f36e7dcb27be086951c0d3208bde34d552dba"
 dependencies = [
  "cfg-if",
  "log",
@@ -3383,6 +3390,7 @@ dependencies = [
 [[package]]
 name = "naia-serde-derive"
 version = "0.18.0"
+source = "git+https://github.com/naia-lib/naia?rev=954f36e7dcb27be086951c0d3208bde34d552dba#954f36e7dcb27be086951c0d3208bde34d552dba"
 dependencies = [
  "cfg-if",
  "log",
@@ -3394,6 +3402,7 @@ dependencies = [
 [[package]]
 name = "naia-server"
 version = "0.20.0"
+source = "git+https://github.com/naia-lib/naia?rev=954f36e7dcb27be086951c0d3208bde34d552dba#954f36e7dcb27be086951c0d3208bde34d552dba"
 dependencies = [
  "bevy_ecs",
  "cfg-if",
@@ -3407,6 +3416,7 @@ dependencies = [
 [[package]]
 name = "naia-server-socket"
 version = "0.20.0"
+source = "git+https://github.com/naia-lib/naia?rev=954f36e7dcb27be086951c0d3208bde34d552dba#954f36e7dcb27be086951c0d3208bde34d552dba"
 dependencies = [
  "async-dup",
  "futures-channel",
@@ -3423,6 +3433,7 @@ dependencies = [
 [[package]]
 name = "naia-shared"
 version = "0.20.0"
+source = "git+https://github.com/naia-lib/naia?rev=954f36e7dcb27be086951c0d3208bde34d552dba#954f36e7dcb27be086951c0d3208bde34d552dba"
 dependencies = [
  "bevy_ecs",
  "cfg-if",
@@ -3436,6 +3447,7 @@ dependencies = [
 [[package]]
 name = "naia-socket-shared"
 version = "0.20.0"
+source = "git+https://github.com/naia-lib/naia?rev=954f36e7dcb27be086951c0d3208bde34d552dba#954f36e7dcb27be086951c0d3208bde34d552dba"
 dependencies = [
  "cfg-if",
  "js-sys",

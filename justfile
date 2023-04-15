@@ -50,7 +50,7 @@ wasm:
 
 wasm-opt:
     wasm-opt -O -ol 100 -s 100 -o target/out/pbc_bg-opt.wasm target/out/pbc_bg.wasm
-    mv target/out/pbc_bg.wasm target/out/pbc_bg_original.wasm
+    rm target/out/pbc_bg.wasm
     mv target/out/pbc_bg-opt.wasm target/out/pbc_bg.wasm
 
 wasm-opt-single:
@@ -58,8 +58,8 @@ wasm-opt-single:
     mv target/out/pbcs_bg.wasm target/out/pbcs_bg_original.wasm
     mv target/out/pbcs_bg-opt.wasm target/out/pbcs_bg.wasm
 
-build-website: build-wasm
-    cd website && yarn build && cp ../target/out/* build
+build-website: 
+    cd website && yarn build && cp -r ../target/out/* build
 
 publish-website: build-website
     cd website && yarn publish:site

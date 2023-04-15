@@ -94,7 +94,7 @@ pub fn init(
     mut commands: Commands,
     mut client: Client,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut images: ResMut<Assets<Image>>,
+    // mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     audio: Res<Audio>,
     // audio_sinks: Res<Assets<AudioSink>>,
@@ -1070,7 +1070,6 @@ mod events {
 
     pub fn insert_component_events(
         global: Res<Global>,
-        mut meshes: ResMut<Assets<Mesh>>,
         mut materials: ResMut<Assets<StandardMaterial>>,
 
         mut commands: Commands,
@@ -1291,36 +1290,36 @@ mod input {
     use bevy_rapier3d::prelude::*;
     use naia_bevy_client::Client;
 
-    pub fn camera(
-        time: Res<Time>,
-        mut global: ResMut<Global>,
-        keyboard_input: Res<Input<KeyCode>>,
-
-        mut camera_query: Query<&mut Transform, With<Camera>>,
-    ) {
-        let mut camera_transform = camera_query.single_mut();
-
-        if keyboard_input.just_pressed(KeyCode::C) {
-            global.camera_is_birdseye = !global.camera_is_birdseye;
-            if global.camera_is_birdseye {
-                *camera_transform = BIRDS_EYE_CAM.looking_at(BIRDS_EYE_CAM_LOOK, Vec3::Y);
-            } else {
-                *camera_transform = KICK_CAM.looking_at(KICK_CAM_LOOK, Vec3::Y);
-            }
-        }
-
-        if keyboard_input.pressed(KeyCode::Left) {
-            camera_transform.rotate_around(
-                BALL_START,
-                Quat::from_euler(EulerRot::XYZ, 0.0, time.delta_seconds(), 0.0),
-            );
-        } else if keyboard_input.pressed(KeyCode::Right) {
-            camera_transform.rotate_around(
-                BALL_START,
-                Quat::from_euler(EulerRot::XYZ, 0.0, -time.delta_seconds(), 0.0),
-            );
-        }
-    }
+    // pub fn camera(
+    //     time: Res<Time>,
+    //     mut global: ResMut<Global>,
+    //     keyboard_input: Res<Input<KeyCode>>,
+    //
+    //     mut camera_query: Query<&mut Transform, With<Camera>>,
+    // ) {
+    //     let mut camera_transform = camera_query.single_mut();
+    //
+    //     if keyboard_input.just_pressed(KeyCode::C) {
+    //         global.camera_is_birdseye = !global.camera_is_birdseye;
+    //         if global.camera_is_birdseye {
+    //             *camera_transform = BIRDS_EYE_CAM.looking_at(BIRDS_EYE_CAM_LOOK, Vec3::Y);
+    //         } else {
+    //             *camera_transform = KICK_CAM.looking_at(KICK_CAM_LOOK, Vec3::Y);
+    //         }
+    //     }
+    //
+    //     if keyboard_input.pressed(KeyCode::Left) {
+    //         camera_transform.rotate_around(
+    //             BALL_START,
+    //             Quat::from_euler(EulerRot::XYZ, 0.0, time.delta_seconds(), 0.0),
+    //         );
+    //     } else if keyboard_input.pressed(KeyCode::Right) {
+    //         camera_transform.rotate_around(
+    //             BALL_START,
+    //             Quat::from_euler(EulerRot::XYZ, 0.0, -time.delta_seconds(), 0.0),
+    //         );
+    //     }
+    // }
 
     pub fn ball(
         mut global: ResMut<Global>,

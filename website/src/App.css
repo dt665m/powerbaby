@@ -55,3 +55,134 @@
   50% { -o-transform: scale(1.1, 0.9); }
   75% { -o-transform: scale(0.95, 1.05); }
 }
+
+.form-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background-color: #fff;
+  padding: 2rem;
+  border-radius: 1rem;
+  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.25);
+  font-family: 'Arial', sans-serif;
+  max-width: 400px;
+  margin: auto;
+}
+
+.form-heading {
+  font-size: 2rem;
+  margin: 0;
+  margin-bottom: 1rem;
+  color: #9c27b0; /* ambiguous color */
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 1rem;
+  width: 100%;
+}
+
+.form-label {
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+  color: #9c27b0; /* ambiguous color */
+}
+
+.form-input,
+.form-select {
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  border: none;
+  font-size: 1.2rem;
+  font-family: 'Arial', sans-serif;
+  width: 100%;
+}
+
+.form-select {
+  appearance: none;
+  background-color: #fff;
+  color: #9c27b0; /* ambiguous color */
+  /* background-image: url("data:image/svg+xml,%3Csvg width='12' height='6' viewBox='0 0 12 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1.41 0.590027C0.960474 1.03955 0.960474 1.76045 1.41 2.20997L5.59 6.38997C6.04053 6.8395 6.76143 6.8395 7.21196 6.38997L11.39 2.20997C11.84 1.76045 11.84 1.03955 11.39 0.590027C10.9405 0.140499 10.2196 0.140499 9.77008 0.590027L6 4.36003L2.22992 0.590027C1.7804 0.140499 1.0595 0.140499 0.610028 0.590027Z' fill='%239c27b0'/%3E%3C/svg%3E"); */
+}
+
+
+/*leaderboard*/
+.leaderboard {
+  display: flex;
+  justify-content: space-around;
+  background-color: #F7E0EE;
+  border: 10px solid #CE72D0;
+  border-radius: 10px;
+  padding: 20px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+  font-family: "Press Start 2P", sans-serif;
+}
+
+.player {
+  font-size: 18px;
+  color: #333;
+  margin-right: 10px;
+}
+
+.score {
+  font-size: 18px;
+  color: #333;
+  margin-right: 10px;
+}
+
+.bar {
+  height: 20px;
+  border-radius: 10px;
+}
+
+.pink-scores .player {
+  color: #F06292;
+}
+
+.pink-scores .score {
+  color: #F06292;
+}
+
+.pink-scores .bar {
+  background-color: #F06292;
+}
+
+.blue-scores .player {
+  color: #64B5F6;
+}
+
+.blue-scores .score {
+  color: #64B5F6;
+}
+
+.blue-scores .bar {
+  background-color: #64B5F6;
+}
+
+.category-total {
+  text-align: center;
+  margin-top: 20px;
+  margin-bottom: 20px;
+  font-family: "Press Start 2P", sans-serif;
+}
+
+.category-total h2 {
+  font-size: 24px;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+.pink-total {
+  color: #F06292;
+}
+
+.blue-total {
+  color: #64B5F6;
+}

@@ -37,6 +37,11 @@ CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-server-runner cargo run --profil
 # navigate to the loaded webserver after compilation
 ```
 
+For Linux Servers
+```
+sudo apt-get install libssl-dev build-essential libasound2-dev
+```
+
 ## Roadmap
 🚧 = In Progress
 ⛑ = In Testing 
