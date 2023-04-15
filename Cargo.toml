@@ -53,13 +53,13 @@ bevy-debug-text-overlay = { version = "5.1" }
 # naia-bevy-server = { version = "0.20", features = ["transport_webrtc"] }
 # naia-bevy-shared = { version = "0.20" }
 
-# naia-bevy-client = { git = "https://github.com/naia-lib/naia", rev = "954f36e7dcb27be086951c0d3208bde34d552dba", features = ["transport_webrtc"] }
-# naia-bevy-server = { git = "https://github.com/naia-lib/naia", rev = "954f36e7dcb27be086951c0d3208bde34d552dba", features = ["transport_webrtc"] }
-# naia-bevy-shared = { git = "https://github.com/naia-lib/naia", rev = "954f36e7dcb27be086951c0d3208bde34d552dba" }
+naia-bevy-client = { git = "https://github.com/naia-lib/naia", rev = "954f36e7dcb27be086951c0d3208bde34d552dba", features = ["transport_webrtc"] }
+naia-bevy-server = { git = "https://github.com/naia-lib/naia", rev = "954f36e7dcb27be086951c0d3208bde34d552dba", features = ["transport_webrtc"] }
+naia-bevy-shared = { git = "https://github.com/naia-lib/naia", rev = "954f36e7dcb27be086951c0d3208bde34d552dba" }
 
-naia-bevy-client = { path = "../naia/adapters/bevy/client", features = ["transport_webrtc"] }
-naia-bevy-server = { path = "../naia/adapters/bevy/server", features = ["transport_webrtc"] }
-naia-bevy-shared = { path = "../naia/adapters/bevy/shared" }
+# naia-bevy-client = { path = "../naia/adapters/bevy/client", features = ["transport_webrtc"] }
+# naia-bevy-server = { path = "../naia/adapters/bevy/server", features = ["transport_webrtc"] }
+# naia-bevy-shared = { path = "../naia/adapters/bevy/shared" }
 
 # # Enable a small amount of optimization in debug mode
 # [profile.dev]
