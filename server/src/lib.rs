@@ -365,8 +365,8 @@ pub fn ball_score(
 
 #[derive(Resource)]
 pub struct LastFlush(f32);
-// const STORAGE_PATH: &str = "/var/powerbaby.json";
-const STORAGE_PATH: &str = "./powerbaby.json";
+const STORAGE_PATH: &str = "/var/powerbaby.json";
+// const STORAGE_PATH: &str = "./powerbaby.json";
 pub fn flush_scores(time: Res<Time>, global: Res<Global>, mut last_flush: ResMut<LastFlush>) {
     last_flush.0 += time.delta_seconds();
     if last_flush.0 >= 30.0 {
