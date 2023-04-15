@@ -5,6 +5,7 @@ use core::constants::*;
 /// - render unowned balls names (nice to have?)
 ///
 /// #Later Learning
+/// - render to texture for UI https://github.com/hallettj/redstone-designer/blob/main/src/block_picker.rs
 /// - confirm soundness of the system orders (client and server side)
 /// - Determinism:
 ///     - https://github.com/dimforge/bevy_rapier/issues/79
@@ -17,7 +18,10 @@ use core::constants::*;
 ///     engine.  (this is hard/unknown for bevy_rapier.  Not sure how to do this but the ball
 ///     basically needs to fly as if it was bounced off at that past point, into the future
 ///     somehow.  The current physics will need to keep moving forward)
-use protocol::messages::{Auth, KeyCommand};
+use protocol::{
+    messages::{Auth, KeyCommand},
+    primitives::Scores,
+};
 
 use std::f32::consts::*;
 
@@ -29,21 +33,20 @@ use bevy_rapier3d::prelude::*;
 
 use bevy_debug_text_overlay::{screen_print, OverlayPlugin};
 // use bevy_inspector_egui::prelude::*;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
+// use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 use naia_bevy_client::{
     transport::webrtc, Client, ClientConfig, CommandHistory, Plugin as NaiaClientPlugin,
     ReceiveEvents,
 };
 
-// #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Default, States)]
-// pub enum AppState {
-//     #[default]
-//     Loading,
-//     Staging,
-//     Connect,
-//     InGame,
-// }
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Default, States)]
+pub enum AppState {
+    #[default]
+    NameInput,
+    Selection,
+    InGame,
+}
 
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 struct MainLoop;
@@ -60,29 +63,323 @@ pub fn debug_overlay(time: Res<Time>) {
     }
 }
 
+// A unit struct to help identify the FPS UI component, since there may be many Text components
+#[derive(Component)]
+struct UI;
+
+#[cfg(target_arch = "wasm32")]
+fn get_userinfo() -> anyhow::Result<(String, String)> {
+    use anyhow::anyhow;
+    use js_sys::Reflect;
+    use wasm_bindgen::JsValue;
+
+    let window = web_sys::window().ok_or_else(|| anyhow!("Can't access Window object"))?;
+    let player_name = Reflect::get(&window, &JsValue::from_str("player_name"))
+        .map_err(|_| anyhow!("no player_name"))?
+        .as_string()
+        .ok_or_else(|| anyhow!("can't convert to string"))?;
+    let player_color = Reflect::get(&window, &JsValue::from_str("player_color"))
+        .map_err(|_| anyhow!("no player_name"))?
+        .as_string()
+        .ok_or_else(|| anyhow!("can't convert to string"))?;
+    Ok((player_name, player_color))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn get_userinfo() -> anyhow::Result<(String, String)> {
+    Ok(("armorous0772".to_owned(), "blue".to_owned()))
+}
+
 pub fn init(
     mut commands: Commands,
     mut client: Client,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    // mut materials: ResMut<Assets<ColorMaterial>>,
+    audio: Res<Audio>,
+    // audio_sinks: Res<Assets<AudioSink>>,
+    asset_server: Res<AssetServer>, // mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    info!("Naia Bevy Client Demo started");
+    let music = asset_server.load("sounds/smw-world.mp3");
+    audio.play_with_settings(
+        music,
+        PlaybackSettings {
+            repeat: true,
+            volume: 0.2,
+            ..Default::default()
+        },
+    );
 
-    client.auth(Auth::new("charlie", "12345"));
-    let socket = webrtc::Socket::new("http://127.0.0.1:14191", client.socket_config());
+    info!("PowerBaby Connecting");
+    let (player_name, player_color) =
+        get_userinfo().unwrap_or_else(|_| ("Denis".to_owned(), "blue".to_owned()));
+    info!("Player: {}, Color: {}", player_name, player_color);
+
+    client.auth(Auth::from((player_name.clone(), player_color.clone())));
+    let socket = webrtc::Socket::new(protocol::SERVER_HANDSHAKE_URL, client.socket_config());
     client.connect(socket);
 
-    let ball_texture_handle = images.add(core::debug::uv_texture());
+    let mut blue_name = Default::default();
+    let mut pink_name = Default::default();
+    let mut blue_score_entity = Entity::PLACEHOLDER;
+    let mut pink_score_entity = Entity::PLACEHOLDER;
+    if &player_color == "blue" {
+        blue_name = player_name;
+    } else {
+        pink_name = player_name;
+    }
+
     // Setup Global Resource
     let mut global = Global::default();
+    commands
+        .spawn(NodeBundle {
+            style: Style {
+                size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
+                justify_content: JustifyContent::SpaceBetween,
+                flex_direction: FlexDirection::Row,
+                margin: UiRect {
+                    left: Val::Px(20.0),
+                    right: Val::Px(20.0),
+                    top: Val::Px(24.0),
+                    ..Default::default()
+                },
+                ..default()
+            },
+            ..default()
+        })
+        .insert(UI)
+        .with_children(|c| {
+            // LEFT SIDE BLUE
+            c.spawn(NodeBundle {
+                style: Style {
+                    align_items: AlignItems::Center,
+                    flex_direction: FlexDirection::Column,
+                    gap: Size {
+                        height: Val::Px(10.0),
+                        ..default()
+                    },
+                    ..default()
+                },
+                ..default()
+            })
+            .with_children(|c| {
+                c.spawn(TextBundle {
+                    style: Style { ..default() },
+                    text: Text::from_sections([TextSection::new(
+                        "Total",
+                        TextStyle {
+                            font: asset_server.load("fonts/color-mario.ttf"),
+                            font_size: 21.0,
+                            color: Color::hex("#89CFF0").unwrap(),
+                        },
+                    )]),
+                    ..default()
+                });
+
+                global.total_blue_entity = Some(
+                    c.spawn(TextBundle {
+                        style: Style {
+                            margin: UiRect {
+                                bottom: Val::Px(15.0),
+                                ..Default::default()
+                            },
+                            ..default()
+                        },
+                        text: Text::from_sections([TextSection::new(
+                            "0",
+                            TextStyle {
+                                font: asset_server.load("fonts/color-mario.ttf"),
+                                font_size: 21.0,
+                                color: Color::hex("#89CFF0").unwrap(),
+                            },
+                        )]),
+                        ..default()
+                    })
+                    .id(),
+                );
+
+                c.spawn(TextBundle {
+                    style: Style { ..default() },
+                    text: Text::from_sections([TextSection::new(
+                        blue_name,
+                        TextStyle {
+                            font: asset_server.load("fonts/color-mario.ttf"),
+                            font_size: 12.0,
+                            color: Color::hex("#89CFF0").unwrap(),
+                        },
+                    )]),
+                    ..default()
+                });
+
+                blue_score_entity = c
+                    .spawn(TextBundle {
+                        style: Style { ..default() },
+                        text: Text::from_sections([TextSection::new(
+                            "",
+                            TextStyle {
+                                font: asset_server.load("fonts/color-mario.ttf"),
+                                font_size: 10.0,
+                                color: Color::hex("#89CFF0").unwrap(),
+                            },
+                        )]),
+                        ..default()
+                    })
+                    .id();
+            });
+
+            c.spawn(NodeBundle {
+                style: Style {
+                    align_items: AlignItems::Center,
+                    flex_direction: FlexDirection::Column,
+                    gap: Size {
+                        height: Val::Px(10.0),
+                        ..default()
+                    },
+                    ..default()
+                },
+                ..default()
+            })
+            .with_children(|c| {
+                c.spawn(TextBundle {
+                    style: Style { ..default() },
+                    text: Text::from_sections([TextSection::new(
+                        "Total",
+                        TextStyle {
+                            font: asset_server.load("fonts/color-mario.ttf"),
+                            font_size: 24.0,
+                            color: Color::hex("#FFB7CE").unwrap(),
+                        },
+                    )]),
+                    ..default()
+                });
+
+                global.total_pink_entity = Some(
+                    c.spawn(TextBundle {
+                        style: Style {
+                            margin: UiRect {
+                                bottom: Val::Px(20.0),
+                                ..Default::default()
+                            },
+                            ..default()
+                        },
+                        text: Text::from_sections([TextSection::new(
+                            "0",
+                            TextStyle {
+                                font: asset_server.load("fonts/color-mario.ttf"),
+                                font_size: 21.0,
+                                color: Color::hex("#FFB7CE").unwrap(),
+                            },
+                        )]),
+                        ..default()
+                    })
+                    .id(),
+                );
+
+                c.spawn(TextBundle {
+                    style: Style { ..default() },
+                    text: Text::from_sections([TextSection::new(
+                        pink_name,
+                        TextStyle {
+                            font: asset_server.load("fonts/color-mario.ttf"),
+                            font_size: 12.0,
+                            color: Color::hex("#FFB7CE").unwrap(),
+                        },
+                    )]),
+                    ..default()
+                });
+
+                pink_score_entity = c
+                    .spawn(TextBundle {
+                        style: Style { ..default() },
+                        text: Text::from_sections([TextSection::new(
+                            "",
+                            TextStyle {
+                                font: asset_server.load("fonts/color-mario.ttf"),
+                                font_size: 24.0,
+                                color: Color::hex("#FFB7CE").unwrap(),
+                            },
+                        )]),
+                        ..default()
+                    })
+                    .id();
+            });
+        });
+
+    if &player_color == "blue" {
+        global.own_score_entity = Some(blue_score_entity);
+    } else {
+        global.own_score_entity = Some(pink_score_entity);
+    }
+
+    // // Test ui
+    // commands
+    //     .spawn(ButtonBundle {
+    //         style: Style {
+    //             justify_content: JustifyContent::Center,
+    //             align_items: AlignItems::Center,
+    //             position_type: PositionType::Absolute,
+    //             position: UiRect {
+    //                 left: Val::Px(50.0),
+    //                 right: Val::Px(50.0),
+    //                 top: Val::Auto,
+    //                 bottom: Val::Px(150.0),
+    //             },
+    //             ..default()
+    //         },
+    //         ..default()
+    //     })
+    //     .with_children(|b| {
+    //         b.spawn(
+    //             TextBundle::from_section(
+    //                 "Test Button",
+    //                 TextStyle {
+    //                     font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+    //                     font_size: 30.0,
+    //                     color: Color::BLACK,
+    //                 },
+    //             )
+    //             .with_text_alignment(TextAlignment::Center),
+    //         );
+    //     });
+
+    // let ball_texture_handle = images.add(core::debug::uv_texture());
+    let ball_texture_handle = asset_server.load("images/yoshiegg.png");
+    let ball_texture_pink_handle = asset_server.load("images/yoshiegg_pink.png");
+    let ball_mesh_handle = meshes.add(
+        shape::Icosphere {
+            radius: BALL_RADIUS,
+            ..Default::default()
+        }
+        .try_into()
+        .unwrap(),
+    );
+    global.goalie_scene = asset_server.load("models/yoshi/scene.gltf#Scene0");
+    // let goalie_mesh_handle = meshes.add(
+    //     shape::Capsule {
+    //         radius: GOALIE_RADIUS,
+    //         rings: 0,
+    //         depth: GOALIE_HEIGHT,
+    //         latitudes: 16,
+    //         longitudes: 32,
+    //         uv_profile: shape::CapsuleUvProfile::Aspect,
+    //     }
+    //     .into(),
+    // );
     global.ball_texture = ball_texture_handle.clone();
+    global.ball_texture_pink = ball_texture_pink_handle.clone();
+    global.ball_mesh = ball_mesh_handle;
+    // global.goalie_mesh = goalie_mesh_handle;
     global.debug_material = materials.add(StandardMaterial {
         base_color_texture: Some(ball_texture_handle),
         alpha_mode: AlphaMode::Blend,
         ..default()
     });
+    global.kick_sound = asset_server.load("sounds/yoshi_throws.wav");
+    global.frame_deny_sound = asset_server.load("sounds/fireball.wav");
+    global.goalie_deny_sound = asset_server.load("sounds/yoshi_bounce.wav");
+    global.pink_goal_sound = asset_server.load("sounds/coin_pink.wav");
+    global.blue_goal_sound = asset_server.load("sounds/coin_blue.wav");
+
     let ground_material = materials.add(StandardMaterial {
         base_color: Color::SEA_GREEN,
         perceptual_roughness: 1.0,
@@ -101,6 +398,7 @@ pub fn init(
 
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
+            // shadows_enabled: false,
             shadows_enabled: true,
             ..default()
         },
@@ -116,6 +414,11 @@ pub fn init(
         commands
             .spawn((
                 Name::new("Ground"),
+                // SceneBundle {
+                //     scene: asset_server.load("models/field/scene.gltf#Scene0"),
+                //     transform: Transform::from_xyz(0.0, GROUND_HEIGHT, 0.0),
+                //     ..Default::default()
+                // },
                 PbrBundle {
                     mesh: meshes.add(shape::Plane::from_size(GROUND_SIZE * 2.0).into()),
                     material: ground_material,
@@ -179,6 +482,7 @@ pub fn init(
     commands.insert_resource(global);
 }
 
+#[derive(Clone)]
 pub struct OwnedEntity {
     pub confirmed: Entity,
     pub predicted: Entity,
@@ -197,7 +501,14 @@ impl OwnedEntity {
 pub struct Global {
     pub camera_is_birdseye: bool,
 
-    // pub owned_entity: Option<OwnedEntity>,
+    //Scoring
+    pub my_score: u32,
+    pub total_pink: u32,
+    pub total_blue: u32,
+    pub own_score_entity: Option<Entity>,
+    pub total_pink_entity: Option<Entity>,
+    pub total_blue_entity: Option<Entity>,
+
     pub owned_entity: Option<OwnedEntity>,
     pub ground_entity: Option<Entity>,
     pub queued_command: Option<KeyCommand>,
@@ -207,6 +518,15 @@ pub struct Global {
     pub ground_material: Handle<StandardMaterial>,
     pub goal_material: Handle<StandardMaterial>,
     pub ball_texture: Handle<Image>,
+    pub ball_texture_pink: Handle<Image>,
+    pub ball_mesh: Handle<Mesh>,
+    pub goalie_scene: Handle<Scene>,
+    // pub goalie_mesh: Handle<Mesh>,
+    pub kick_sound: Handle<AudioSource>,
+    pub frame_deny_sound: Handle<AudioSource>,
+    pub goalie_deny_sound: Handle<AudioSource>,
+    pub pink_goal_sound: Handle<AudioSource>,
+    pub blue_goal_sound: Handle<AudioSource>,
 }
 
 mod components {
@@ -339,7 +659,7 @@ mod components {
             self.next_x = next_x;
             self.next_y = next_y;
             self.next_z = next_z;
-            self.next_w = next_w;
+            // self.next_w = next_w;
         }
 
         pub(crate) fn interpolate(&mut self, interpolation: f32) {
@@ -348,6 +668,18 @@ mod components {
             }
             if self.interp < interpolation {
                 self.interp = interpolation;
+
+                // let lerped = slerp(
+                //     Quat::from_xyzw(self.last_x, self.last_y, self.last_z, self.last_w),
+                //     Quat::from_xyzw(self.next_x, self.next_y, self.next_z, self.next_w),
+                //     self.interp,
+                // );
+                //
+                // self.interp_x = lerped.x;
+                // self.interp_y = lerped.y;
+                // self.interp_z = lerped.z;
+                // self.interp_w = lerped.w;
+
                 self.interp_x = self.last_x + (self.next_x - self.last_x) * self.interp;
                 self.interp_y = self.last_y + (self.next_y - self.last_y) * self.interp;
                 self.interp_z = self.last_z + (self.next_z - self.last_z) * self.interp;
@@ -355,17 +687,100 @@ mod components {
             }
         }
     }
+
+    // fn lerp(a: Quat, b: Quat, s: f32) -> Quat {
+    //     use std::ops::{Add, Mul, Sub};
+    //     let start = a;
+    //     let dot = start.dot(b);
+    //     let bias = if dot >= 0.0 { 1.0 } else { -1.0 };
+    //     let interpolated = a.add(b.mul(bias).sub(start).mul(s));
+    //     interpolated
+    // }
+    //
+    // pub fn slerp(a: Quat, mut b: Quat, s: f32) -> Quat {
+    //     use std::ops::{Add, Mul};
+    //     const DOT_THRESHOLD: f32 = 0.9995;
+    //
+    //     // Note that a rotation can be represented by two quaternions: `q` and
+    //     // `-q`. The slerp path between `q` and `end` will be different from the
+    //     // path between `-q` and `end`. One path will take the long way around and
+    //     // one will take the short way. In order to correct for this, the `dot`
+    //     // product between `self` and `end` should be positive. If the `dot`
+    //     // product is negative, slerp between `self` and `-end`.
+    //     let mut dot = a.dot(b);
+    //     if dot < 0.0 {
+    //         b = -b;
+    //         dot = -dot;
+    //     }
+    //
+    //     if dot > DOT_THRESHOLD {
+    //         // assumes lerp returns a normalized quaternion
+    //         lerp(a, b, s)
+    //     } else {
+    //         let theta = dot.acos_approx();
+    //
+    //         let scale1 = (theta * (1.0 - s)).sin();
+    //         let scale2 = (theta * s).sin();
+    //         let theta_sin = theta.sin();
+    //
+    //         a.mul(scale1).add(b.mul(scale2)).mul(theta_sin.recip())
+    //     }
+    // }
+    //
+    // pub(crate) trait FloatEx {
+    //     /// Returns a very close approximation of `self.clamp(-1.0, 1.0).acos()`.
+    //     fn acos_approx(self) -> Self;
+    // }
+    //
+    // impl FloatEx for f32 {
+    //     #[inline(always)]
+    //     fn acos_approx(self) -> Self {
+    //         // Based on https://github.com/microsoft/DirectXMath `XMScalarAcos`
+    //         // Clamp input to [-1,1].
+    //         let nonnegative = self >= 0.0;
+    //         let x = self.abs();
+    //         let mut omx = 1.0 - x;
+    //         if omx < 0.0 {
+    //             omx = 0.0;
+    //         }
+    //         let root = omx.sqrt();
+    //
+    //         // 7-degree minimax approximation
+    //         #[allow(clippy::approx_constant)]
+    //         let mut result = ((((((-0.001_262_491_1 * x + 0.006_670_09) * x - 0.017_088_126)
+    //             * x
+    //             + 0.030_891_88)
+    //             * x
+    //             - 0.050_174_303)
+    //             * x
+    //             + 0.088_978_99)
+    //             * x
+    //             - 0.214_598_8)
+    //             * x
+    //             + 1.570_796_3;
+    //         result *= root;
+    //
+    //         // acos(x) = pi - acos(-x) when x < 0
+    //         if nonnegative {
+    //             result
+    //         } else {
+    //             std::f32::consts::PI - result
+    //         }
+    //     }
+    // }
 }
 
 mod events {
     use super::components::{Confirmed, InterpPos, InterpRot, Predicted};
     use super::{Global, OwnedEntity};
+    use crate::AppState;
     use core::{components::Ball, constants::*};
 
     use protocol::{
-        channels::{EntityAssignmentChannel, PlayerCommandChannel},
-        components::{EntityKind, EntityKindValue, RepPhysics, UpdateWith},
-        messages::{EntityAssignment, KeyCommand},
+        channels::{EntityAssignmentChannel, GameStateChannel, PlayerCommandChannel},
+        components::{EntityKind, EntityKindValue, Player, RepPhysics, UpdateWith},
+        messages::{EntityAssignment, EventKind, KeyCommand, PlayerEvent, TotalScoreState},
+        primitives::PlayColor,
     };
 
     use bevy::{pbr::NotShadowReceiver, prelude::*};
@@ -383,8 +798,9 @@ mod events {
 
     pub fn connect_events(
         // mut commands: Commands,
+        global: Res<Global>,
         client: Client,
-        // mut global: ResMut<Global>,
+        mut next_state: ResMut<NextState<AppState>>,
         mut event_reader: EventReader<ConnectEvent>,
     ) {
         for _ in event_reader.iter() {
@@ -442,111 +858,215 @@ mod events {
     pub fn message_events(
         client: Client,
         mut global: ResMut<Global>,
-        mut meshes: ResMut<Assets<Mesh>>,
         mut materials: ResMut<Assets<StandardMaterial>>,
+        audio: Res<Audio>,
 
         mut commands: Commands,
         mut event_reader: EventReader<MessageEvents>,
 
         ball_query: Query<(&RepPhysics, &Handle<StandardMaterial>)>,
+        mut text_query: Query<&mut Text>,
     ) {
         for events in event_reader.iter() {
             for message in events.read::<EntityAssignmentChannel, EntityAssignment>() {
-                let assign = message.assign;
-                let entity = message.entity.get(&client).unwrap();
-                if assign {
-                    info!("entityassignment ownership");
-
-                    // Here we create a local copy of the Player entity, to use for client-side prediction
-                    if let Ok((rep_physics, mat_handle)) = ball_query.get(entity) {
-                        //change the owned_confirmed entity (server side) to a transparent red
-                        let confirmed_ball_mat = materials.get_mut(mat_handle).unwrap();
-                        confirmed_ball_mat.base_color.set_a(1.0);
-
-                        // // take and give this texture to the prediction ball.  All balls
-                        // // are spawned with the default texture
-                        // let confirmed_texture = confirmed_ball_mat.base_color_texture.take();
-                        // // set the confirmed ball to red with transparency
-                        // confirmed_ball_mat.base_color = Color::rgba(0.7, 0.2, 0.1, 0.4);
-                        // confirmed_ball_mat.unlit = true;
-
-                        //add physics ball for clicking, eventually use it for prediction?
-                        let mut prediction_transform = Transform::default();
-                        prediction_transform.update_with(rep_physics);
-                        let prediction_entity = commands
-                            .entity(entity)
-                            .duplicate()
-                            .insert((
-                                PbrBundle {
-                                    mesh: meshes.add(
-                                        shape::UVSphere {
-                                            radius: BALL_RADIUS,
-                                            sectors: 36,
-                                            stacks: 18,
-                                        }
-                                        .into(),
-                                    ),
-                                    material: materials.add(Color::rgba(0.7, 0.2, 0.1, 0.0).into()),
-                                    // material: materials.add(StandardMaterial {
-                                    //     base_color: Color::rgb(1.0, 1.0, 1.0),
-                                    //     base_color_texture: confirmed_texture,
-                                    //     alpha_mode: AlphaMode::Blend,
-                                    //     ..default()
-                                    // }),
-                                    transform: prediction_transform,
-                                    ..default()
-                                },
-                                RigidBody::Dynamic,
-                                Collider::ball(BALL_RADIUS),
-                                ColliderMassProperties::Mass(BALL_MASS),
-                                Velocity::zero(),
-                                Friction::new(5.0),
-                                ExternalForce::default(),
-                                ExternalImpulse::default(),
-                                GravityScale::default(),
-                                Damping {
-                                    linear_damping: 1.0,
-                                    angular_damping: 2.0,
-                                },
-                                Restitution {
-                                    coefficient: 1.0,
-                                    combine_rule: CoefficientCombineRule::Average,
-                                },
-                                Sleeping::default(),
-                                Predicted,
-                            ))
-                            .id();
-                        global.owned_entity = Some(OwnedEntity::new(entity, prediction_entity));
-                    }
-                } else {
-                    info!("entityassignment disown");
-                    let mut disowned: bool = false;
-                    if let Some(owned_entity) = &global.owned_entity {
-                        if owned_entity.confirmed == entity {
-                            commands.entity(owned_entity.predicted).despawn();
-                            disowned = true;
-                        }
-                    }
-                    if disowned {
-                        info!("removed ownership of entity");
-                        global.owned_entity = None;
-                    }
-                }
+                handle_entity_assignment(
+                    &mut global,
+                    &client,
+                    &mut commands,
+                    &ball_query,
+                    &mut materials,
+                    message,
+                );
+            }
+            for message in events.read::<GameStateChannel, PlayerEvent>() {
+                handle_player_event(&mut global, &client, &audio, &mut text_query, message);
+            }
+            for message in events.read::<GameStateChannel, TotalScoreState>() {
+                global.total_pink += message.pink;
+                global.total_blue += message.blue;
+                text_query
+                    .get_mut(global.total_pink_entity.unwrap())
+                    .unwrap()
+                    .sections[0]
+                    .value = global.total_pink.to_string();
+                text_query
+                    .get_mut(global.total_blue_entity.unwrap())
+                    .unwrap()
+                    .sections[0]
+                    .value = global.total_blue.to_string();
+                log::info!(
+                    "TOTAL SCORE SNAPSHOT: Pink {}, Blue {}",
+                    message.pink,
+                    message.blue,
+                );
             }
         }
     }
 
-    pub fn spawn_entity_events(mut event_reader: EventReader<SpawnEntityEvent>) {
-        for SpawnEntityEvent(_entity) in event_reader.iter() {
-            info!("spawned entity");
+    fn handle_entity_assignment(
+        global: &mut ResMut<Global>,
+        client: &Client,
+        commands: &mut Commands,
+        ball_query: &Query<(&RepPhysics, &Handle<StandardMaterial>)>,
+        materials: &mut ResMut<Assets<StandardMaterial>>,
+        message: EntityAssignment,
+    ) {
+        let assign = message.assign;
+        let entity = message.entity.get(client).unwrap();
+        if assign {
+            info!("entityassignment ownership");
+
+            // Here we create a local copy of the Player entity, to use for client-side prediction
+            if let Ok((rep_physics, mat_handle)) = ball_query.get(entity) {
+                //change the owned_confirmed entity (server side) to a transparent red
+                let confirmed_ball_mat = materials.get_mut(mat_handle).unwrap();
+                confirmed_ball_mat.base_color.set_a(1.0);
+
+                // // take and give this texture to the prediction ball.  All balls
+                // // are spawned with the default texture
+                // let confirmed_texture = confirmed_ball_mat.base_color_texture.take();
+                // // set the confirmed ball to red with transparency
+                // confirmed_ball_mat.base_color = Color::rgba(0.7, 0.2, 0.1, 0.4);
+                // confirmed_ball_mat.unlit = true;
+
+                //add physics ball for clicking, eventually use it for prediction?
+                let mut prediction_transform = Transform::default();
+                prediction_transform.update_with(rep_physics);
+                let prediction_entity = commands
+                    .entity(entity)
+                    .duplicate()
+                    .insert((
+                        PbrBundle {
+                            mesh: global.ball_mesh.clone(),
+                            material: materials.add(Color::rgba(0.7, 0.2, 0.1, 0.0).into()),
+                            // material: materials.add(StandardMaterial {
+                            //     base_color: Color::rgb(1.0, 1.0, 1.0),
+                            //     base_color_texture: confirmed_texture,
+                            //     alpha_mode: AlphaMode::Blend,
+                            //     ..default()
+                            // }),
+                            transform: prediction_transform,
+                            ..default()
+                        },
+                        RigidBody::Dynamic,
+                        Collider::ball(BALL_RADIUS),
+                        // ColliderMassProperties::Mass(BALL_MASS),
+                        // Velocity::zero(),
+                        // Friction::new(5.0),
+                        // ExternalForce::default(),
+                        // ExternalImpulse::default(),
+                        // GravityScale::default(),
+                        // Damping {
+                        //     linear_damping: 1.0,
+                        //     angular_damping: 2.0,
+                        // },
+                        // Restitution {
+                        //     coefficient: 1.0,
+                        //     combine_rule: CoefficientCombineRule::Average,
+                        // },
+                        Sleeping::default(),
+                        Predicted,
+                    ))
+                    .id();
+                global.owned_entity = Some(OwnedEntity::new(entity, prediction_entity));
+            }
+        } else {
+            info!("entityassignment disown");
+            let mut disowned: bool = false;
+            if let Some(owned_entity) = &global.owned_entity {
+                if owned_entity.confirmed == entity {
+                    commands.entity(owned_entity.predicted).despawn();
+                    disowned = true;
+                }
+            }
+            if disowned {
+                info!("removed ownership of entity");
+                global.owned_entity = None;
+            }
         }
     }
 
-    pub fn despawn_entity_events(mut event_reader: EventReader<DespawnEntityEvent>) {
-        for DespawnEntityEvent(_entity) in event_reader.iter() {
-            info!("despawned entity");
+    fn handle_player_event(
+        global: &mut ResMut<Global>,
+        client: &Client,
+        audio: &Res<Audio>,
+        text_query: &mut Query<&mut Text>,
+        message: PlayerEvent,
+    ) {
+        match message.kind {
+            EventKind::BlueScored => {
+                if let (Some(owned), Some(entity)) =
+                    (global.owned_entity.clone(), message.entity.get(client))
+                {
+                    if owned.confirmed == entity {
+                        global.my_score += 1;
+                        text_query
+                            .get_mut(global.own_score_entity.unwrap())
+                            .unwrap()
+                            .sections[0]
+                            .value = global.my_score.to_string();
+                    }
+                }
+                global.total_blue += 1;
+                text_query
+                    .get_mut(global.total_blue_entity.unwrap())
+                    .unwrap()
+                    .sections[0]
+                    .value = global.total_blue.to_string();
+                audio.play(global.blue_goal_sound.clone());
+            }
+            EventKind::PinkScored => {
+                if let (Some(owned), Some(entity)) =
+                    (global.owned_entity.clone(), message.entity.get(client))
+                {
+                    if owned.confirmed == entity {
+                        global.my_score += 1;
+                        text_query
+                            .get_mut(global.own_score_entity.unwrap())
+                            .unwrap()
+                            .sections[0]
+                            .value = global.my_score.to_string();
+                    }
+                }
+                global.total_pink += 1;
+                text_query
+                    .get_mut(global.total_pink_entity.unwrap())
+                    .unwrap()
+                    .sections[0]
+                    .value = global.total_pink.to_string();
+                audio.play(global.pink_goal_sound.clone());
+            }
+            //do nothing for now
+            EventKind::ScoreSnapshot(_n) => {}
+            EventKind::Kicked => {
+                audio.play(global.kick_sound.clone());
+            }
+            EventKind::DeniedGoalie => {
+                audio.play(global.goalie_deny_sound.clone());
+            }
+            EventKind::DeniedFrame => {
+                audio.play(global.frame_deny_sound.clone());
+            }
         }
     }
+
+    // pub fn spawn_entity_events(mut event_reader: EventReader<SpawnEntityEvent>) {
+    //     for SpawnEntityEvent(_entity) in event_reader.iter() {
+    //         info!("spawned entity");
+    //     }
+    // }
+    //
+    // pub fn despawn_entity_events(mut event_reader: EventReader<DespawnEntityEvent>) {
+    //     for DespawnEntityEvent(_entity) in event_reader.iter() {
+    //         info!("despawned entity");
+    //     }
+    // }
+
+    #[derive(Component)]
+    pub struct GoalieRemote;
+
+    #[derive(Component)]
+    pub struct Goalie;
 
     pub fn insert_component_events(
         global: Res<Global>,
@@ -558,9 +1078,39 @@ mod events {
 
         kind_query: Query<&EntityKind>,
         rep_physics_query: Query<&RepPhysics>,
+        player_query: Query<&Player>,
     ) {
         for events in event_reader.iter() {
-            log::info!("insert component events");
+            for entity in events.read::<Player>() {
+                let player = player_query.get(entity).unwrap();
+                let rep_physics = rep_physics_query.get(entity).unwrap();
+
+                let texture = if let PlayColor::Blue = *player.color {
+                    global.ball_texture.clone()
+                } else {
+                    global.ball_texture_pink.clone()
+                };
+
+                commands.entity(entity).insert((
+                    PbrBundle {
+                        mesh: global.ball_mesh.clone(),
+                        material: materials.add(StandardMaterial {
+                            base_color: Color::rgba(1.0, 1.0, 1.0, 0.2),
+                            base_color_texture: Some(texture),
+                            alpha_mode: AlphaMode::Blend,
+                            ..default()
+                        }),
+                        transform: Transform::from_xyz(
+                            *rep_physics.translation_x,
+                            *rep_physics.translation_y,
+                            *rep_physics.translation_z,
+                        ),
+                        ..default()
+                    },
+                    NotShadowReceiver,
+                ));
+            }
+
             for entity in events.read::<RepPhysics>() {
                 let kind = kind_query.get(entity).unwrap();
                 let rep_physics = rep_physics_query.get(entity).unwrap();
@@ -570,25 +1120,14 @@ mod events {
                     EntityKindValue::Goalie => {
                         commands.entity(entity).insert((
                             Name::new("Goalie"),
-                            PbrBundle {
-                                mesh: meshes.add(
-                                    shape::Capsule {
-                                        radius: GOALIE_RADIUS,
-                                        rings: 0,
-                                        depth: GOALIE_HEIGHT,
-                                        latitudes: 16,
-                                        longitudes: 32,
-                                        uv_profile: shape::CapsuleUvProfile::Aspect,
-                                    }
-                                    .into(),
-                                ),
-                                material: global.debug_material.clone(),
-                                transform: Transform::from_xyz(
+                            Transform {
+                                translation: Vec3::new(
+                                    // 0.0, 0.0, 0.0,
                                     *rep_physics.translation_x,
                                     GOALIE_START.y,
                                     GOALIE_START.z,
                                 ),
-                                ..default()
+                                ..Default::default()
                             },
                             InterpPos::new(
                                 *rep_physics.translation_x,
@@ -602,35 +1141,29 @@ mod events {
                                 *rep_physics.rotation_w,
                             ),
                             Confirmed,
+                            GoalieRemote,
+                        ));
+                        commands.spawn((
+                            SceneBundle {
+                                scene: global.goalie_scene.clone(),
+                                transform: Transform {
+                                    translation: Vec3::new(
+                                        *rep_physics.translation_x,
+                                        GROUND_HEIGHT,
+                                        GOALIE_START.z,
+                                    ),
+                                    rotation: Quat::from_rotation_y(4.71239),
+                                    ..Default::default()
+                                },
+                                ..Default::default()
+                            },
+                            Goalie,
                         ));
                     }
                     EntityKindValue::Ball => {
                         commands.entity(entity).insert((
                             Name::new("Ball"),
                             Ball::default(),
-                            PbrBundle {
-                                mesh: meshes.add(
-                                    shape::UVSphere {
-                                        radius: BALL_RADIUS,
-                                        sectors: 36,
-                                        stacks: 18,
-                                    }
-                                    .into(),
-                                ),
-                                material: materials.add(StandardMaterial {
-                                    base_color: Color::rgba(1.0, 1.0, 1.0, 1.0),
-                                    // base_color: Color::rgba(1.0, 1.0, 1.0, 0.2),
-                                    base_color_texture: Some(global.ball_texture.clone()),
-                                    alpha_mode: AlphaMode::Blend,
-                                    ..default()
-                                }),
-                                transform: Transform::from_xyz(
-                                    *rep_physics.translation_x,
-                                    *rep_physics.translation_y,
-                                    *rep_physics.translation_z,
-                                ),
-                                ..default()
-                            },
                             InterpPos::new(
                                 *rep_physics.translation_x,
                                 *rep_physics.translation_y,
@@ -642,7 +1175,6 @@ mod events {
                                 *rep_physics.rotation_z,
                                 *rep_physics.rotation_w,
                             ),
-                            NotShadowReceiver,
                             Confirmed,
                         ));
                     }
@@ -823,6 +1355,8 @@ mod input {
             keyboard_input.pressed(KeyCode::Space),
             mouse_buttons.pressed(MouseButton::Left),
         ) {
+            // just shoot straight if spacebar is pushed.  Maybe change this to click anywhere but
+            // the ball?
             (true, true, _) => Some((
                 Vec3::new(0.015694855, -0.011672409, 0.9998087).into(),
                 Vec3::new(0.0017264052, 0.0070980787, 42.109978).into(),
@@ -845,10 +1379,6 @@ mod input {
                     None
                 }
             }
-            // (true, false, false, ) => {
-            //     capture_ball_click(camera_query, window, rapier_context, &global.ground_entity)
-            //         .map(|(ray_normal, ray_point)| (ray_normal.into(), ray_point.into()))
-            // }
             _ => None,
         };
 
@@ -879,7 +1409,6 @@ mod input {
             // window.single().get_primary().unwrap()
         };
         let Some(ray) = camera.viewport_to_world(camera_global_transform, touch_to_cursor_pos(touch_pos, &window)) else {
-            log::info!("NO RAY FROM CAMERA");
             return None
         };
 
@@ -913,7 +1442,6 @@ mod input {
         let Some(ray) = window
             .cursor_position()
             .and_then(|cursor| {
-                info!("MOUSE CURSOR: {}", cursor);
                 camera.viewport_to_world(camera_global_transform, cursor)})
             else {
             return None
@@ -943,11 +1471,20 @@ pub mod sync {
     pub fn serverside_entities(
         client: Client,
         mut query: Query<
-            (&RepPhysics, &mut InterpPos, &mut InterpRot, &mut Transform),
-            With<Confirmed>,
+            // (&RepPhysics, &mut InterpPos, &mut Transform),
+            (
+                &RepPhysics,
+                &mut InterpPos,
+                &mut InterpRot,
+                &mut Transform,
+                &EntityKind,
+            ),
+            (With<Confirmed>, Without<super::events::Goalie>),
         >,
+        mut query_yoshi: Query<&mut Transform, With<super::events::Goalie>>,
     ) {
-        for (rep_physics, mut interp, mut interp_rot, mut transform) in query.iter_mut() {
+        for (rep_physics, mut interp, mut interp_rot, mut transform, kind) in query.iter_mut() {
+            // for (rep_physics, mut interp, mut transform) in query.iter_mut() {
             if *rep_physics.translation_x != interp.next_x
                 || *rep_physics.translation_y != interp.next_y
                 || *rep_physics.translation_z != interp.next_z
@@ -982,7 +1519,14 @@ pub mod sync {
             transform.rotation.x = interp_rot.interp_x;
             transform.rotation.y = interp_rot.interp_y;
             transform.rotation.z = interp_rot.interp_z;
-            transform.rotation.w = interp_rot.interp_w;
+            // transform.rotation.w = interp_rot.interp_w;
+            transform.rotation.w = *rep_physics.rotation_w;
+
+            if let EntityKindValue::Goalie = *kind.value {
+                if let Ok(mut yoshi) = query_yoshi.get_single_mut() {
+                    yoshi.translation.x = transform.translation.x;
+                }
+            }
         }
     }
 
@@ -990,13 +1534,23 @@ pub mod sync {
     //It should run after rapier systems and before naia’s ‘ReceiveEvents’ set. And in the
     //client the exactly opposite. Naia events, then sync system and then rapier systems.
 
+    use protocol::components::{EntityKind, EntityKindValue};
+
     // in client after naia 'ReceiveEvents' systems before physics systems
     pub fn sync_from_naia_to_rapier(
-        mut query: Query<(&mut Transform, &mut Velocity, &RepPhysics)>,
+        mut query: Query<(&mut Transform, &mut Velocity, &RepPhysics, &EntityKind)>,
+        mut query_yoshi: Query<&mut Transform, With<super::events::Goalie>>,
     ) {
-        for (mut transform, mut velocity, physics_properties) in query.iter_mut() {
+        for (mut transform, mut velocity, physics_properties, kind) in query.iter_mut() {
             transform.update_with(physics_properties);
-            velocity.update_with(physics_properties);
+            log::info!("YO {:?}", *kind.value);
+            if let EntityKindValue::Goalie = *kind.value {
+                log::info!("YO");
+                if let Ok(mut yoshi) = query_yoshi.get_single_mut() {
+                    yoshi.translation.x = transform.translation.x;
+                }
+            }
+            // velocity.update_with(physics_properties);
         }
     }
 
@@ -1033,17 +1587,27 @@ pub fn run() {
         //     LoadingState::new(AppState::Loading).continue_to_state(AppState::Connect),
         // )
         // .add_collection_to_loading_state::<_, AppAssets>(AppState::Loading)
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Power, Baby! (ONLINE)".into(),
-                resolution: (1920., 1080.).into(),
-                fit_canvas_to_parent: true,
-                prevent_default_event_handling: false,
+        .add_state::<AppState>()
+        .add_plugins(
+            DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "Power, Baby! (ONLINE)".into(),
+                    resolution: bevy::window::WindowResolution::new(480.0, 720.0)
+                        .with_scale_factor_override(8.0),
+                    // resolution: (480.0, 720.0).into(),
+                    // resolution: (480.0, 720.0).into(),
+                    // scale_factor: 2.0,
+                    // mode: window::WindowMode::SizedFullscreen,
+                    // resolution: (1920., 1080.).into(),
+                    // fit_canvas_to_parent: true,
+                    prevent_default_event_handling: false,
+                    canvas: Some("canvas".to_owned()),
+                    ..default()
+                }),
                 ..default()
             }),
-            ..default()
-        }))
-        .add_plugin(WorldInspectorPlugin::new())
+        )
+        // .add_plugin(WorldInspectorPlugin::new())
         .add_plugin(OverlayPlugin {
             font_size: 32.0,
             ..default()
@@ -1054,15 +1618,15 @@ pub fn run() {
             protocol::protocol(),
         ))
         // Background Color
-        // .insert_resource(ClearColor(Color::BLACK))
+        // .insert_resource(ClearColor(Color::hex("#87CEEB").unwrap()))
         .add_startup_system(init)
         .add_systems(
             (
                 events::connect_events,
                 events::disconnect_events,
                 events::reject_events,
-                events::spawn_entity_events,
-                events::despawn_entity_events,
+                // events::spawn_entity_events,
+                // events::despawn_entity_events,
                 events::insert_component_events,
                 events::update_component_events,
                 events::remove_component_events,
@@ -1074,17 +1638,103 @@ pub fn run() {
         .add_system(events::tick_events.in_set(Tick))
         .add_systems(
             (
-                input::camera,
+                // input::camera,
                 input::ball,
+                // button_handler,
+                // name_input,
                 sync::serverside_entities,
                 debug_overlay,
             )
                 .chain()
                 .in_set(MainLoop),
         )
+        // .configure_set(ReceiveEvents.run_if(in_state(AppState::InGame)))
         .configure_set(Tick.after(ReceiveEvents))
         .configure_set(MainLoop.after(Tick))
-        // .add_system(bevy::window::close_on_esc)
+        // .configure_set(Tick.after(ReceiveEvents).run_if(in_state(AppState::InGame)))
+        // .configure_set(MainLoop.after(Tick).run_if(in_state(AppState::InGame)))
+        .add_system(bevy::window::close_on_esc)
         // Run App
         .run();
 }
+
+// fn name_input(
+//     mut global: ResMut<Global>,
+//     mut char_evr: EventReader<ReceivedCharacter>,
+//     keys: Res<Input<KeyCode>>,
+//
+//     mut query: Query<(Entity, &mut Children), With<UI>>,
+//     mut text_child: Query<&mut Text>,
+// ) {
+//     let (entity, children) = query.get_single_mut().unwrap();
+//     for &child in children.iter() {
+//         // get the health of each child unit
+//         let mut text = text_child.get_mut(child).unwrap();
+//         let section = &mut text.sections[1].value;
+//
+//         for ev in char_evr.iter() {
+//             if section.len() < 32 {
+//                 if !ev.char.is_whitespace() {
+//                     section.push(ev.char);
+//                 }
+//             }
+//         }
+//
+//         if keys.just_pressed(KeyCode::Delete) {
+//             if section.len() > 0 {
+//                 section.pop();
+//             }
+//         }
+//
+//         if keys.just_pressed(KeyCode::Return) {
+//             // log::info!("Return!");
+//             // let window = web_sys::window().expect("no global `window` exists");
+//             // window
+//             //     .location()
+//             //     .set_href("https://power-baby.com")
+//             //     .expect("location exists");
+//             // window.href();
+//
+//             // println!("Text input: {}", *string);
+//             // string.clear();
+//         }
+//     }
+//     // for (parent, mut text) in query.iter_mut() {
+//     // log::info!("wowoww");
+//     // let section = &mut text.sections[0].value;
+//     // }
+// }
+
+// fn user_selected(mut next_state: ResMut<NextState<AppState>>, keyboard_input: Res<Input<KeyCode>>) {
+//     if keyboard_input.just_pressed(KeyCode::Space) {
+//         next_state.set(AppState::InGame);
+//     }
+// }
+
+// fn button_handler(
+//     mut interaction_query: Query<
+//         (&Interaction, &mut BackgroundColor),
+//         (Changed<Interaction>, With<Button>),
+//     >,
+//     mut window_query: Query<&mut Window, With<window::PrimaryWindow>>,
+// ) {
+//     for (interaction, mut color) in &mut interaction_query {
+//         match *interaction {
+//             Interaction::Clicked => {
+//                 let w = window_query.get_single_mut().unwrap();
+//                 log::info!("WINDOW {}x{} ({})", w.width(), w.height(), w.scale_factor());
+//                 *color = Color::BLUE.into();
+//             }
+//             Interaction::Hovered => {
+//                 *color = Color::GRAY.into();
+//             }
+//             Interaction::None => {
+//                 *color = Color::WHITE.into();
+//             }
+//         }
+//         match *interaction {
+//             Interaction::Clicked => {}
+//             _ => (),
+//         }
+//     }
+// }

@@ -1,0 +1,22 @@
+{
+  "name": "powerbaby-client",
+  "collaborators": [
+    "denistsai@aetheras.io"
+  ],
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dt665m/powerbaby"
+  },
+  "files": [
+    "pbc_bg.wasm",
+    "pbc_bg.wasm.d.ts",
+    "pbc.js",
+    "pbc.d.ts"
+  ],
+  "module": "pbc.js",
+  "types": "pbc.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

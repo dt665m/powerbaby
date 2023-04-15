@@ -121,7 +121,7 @@ pub mod constants {
 
     pub const MAGNUS_AIR_DENSITY: f32 = 3.225; // kg/m^3
     pub const MAGNUS_CONSTANT: f32 = 4.0 / 3.0 * PI * MAGNUS_AIR_DENSITY * 0.001331; //f32::powf(BALL_RADIUS, 3.0);
-    pub const BALL_SHOT_WAIT_TIME: f32 = 5.0; // wait 5 seconds
+    pub const BALL_SHOT_WAIT_TIME: f32 = 2.0;
 
     //Camera
     pub const BIRDS_EYE_CAM: Transform = Transform::from_xyz(0.0, 17.7, 37.7);

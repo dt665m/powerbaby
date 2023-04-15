@@ -46,10 +46,12 @@ CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-server-runner cargo run --profil
 | ------- | :------: |
 | Ball Physics | 🚀 |
 | Dumb Goalie | 🚀 |
-| WASM | 🚀  |
-| Realtime Multiplayer | ⛑  |
-| Leaderboard / Stat Tracking | 🚧  |
-| Goalie IQ++ | 🚧  |
-| UI | 🚧  |
+| WASM | 🚀 |
+| Touch Controls | 🚀 |
+| Realtime Multiplayer | ⛑ |
+| Leaderboard / Stat Tracking | 🚧 |
+| Goalie IQ++ | 🚧 |
+| Skybox | 🚧 |
+| UI | 🚧 |
 | Graphics | 🚧 |
 | Sound Effects / Music| 🚧 |

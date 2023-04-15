@@ -626,13 +626,13 @@ pub fn staging(
     );
 }
 
-#[derive(Resource)]
-pub struct NullCharacter {
-    pub scene: Handle<Scene>,
-    pub run: Handle<AnimationClip>,
-    pub idle: Handle<AnimationClip>,
-    pub walk: Handle<AnimationClip>,
-}
+// #[derive(Resource)]
+// pub struct NullCharacter {
+//     pub scene: Handle<Scene>,
+//     pub run: Handle<AnimationClip>,
+//     pub idle: Handle<AnimationClip>,
+//     pub walk: Handle<AnimationClip>,
+// }
 
 pub fn load_assets(
     _assets: Res<AssetServer>,

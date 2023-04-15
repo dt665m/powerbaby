@@ -7,6 +7,14 @@ use std::time::Duration;
 // use naia_bevy_shared::{LinkConditionerConfig, Protocol};
 use naia_bevy_shared::Protocol;
 
+pub const MAGIC_NUMBER: u16 = 0772;
+pub const SERVER_HANDSHAKE_URL: &str = "http://192.168.0.188:14191";
+pub const SERVER_AD_URL: &str = "http://192.168.0.188:14192";
+// pub const SERVER_HANDSHAKE_URL: &str = "http://127.0.0.1:14191";
+// pub const SERVER_AD_URL: &str = "http://127.0.0.1:14192";
+// pub const SERVER_URL: &str = "http://192.168.0.188:14191";
+// pub const SERVER_URL: &str = "http://192.168.50.156:14191";
+
 // Protocol Build
 pub fn protocol() -> Protocol {
     Protocol::builder()
@@ -36,6 +44,9 @@ pub mod channels {
     #[derive(Channel)]
     pub struct EntityAssignmentChannel;
 
+    #[derive(Channel)]
+    pub struct GameStateChannel;
+
     // Plugin
     pub struct ChannelsPlugin;
 
@@ -50,14 +61,33 @@ pub mod channels {
                 .add_channel::<EntityAssignmentChannel>(
                     ChannelDirection::ServerToClient,
                     ChannelMode::UnorderedReliable(ReliableSettings::default()),
+                )
+                .add_channel::<GameStateChannel>(
+                    ChannelDirection::ServerToClient,
+                    ChannelMode::UnorderedReliable(ReliableSettings::default()),
                 );
         }
     }
 }
 
 pub mod primitives {
+    use std::collections::HashMap;
+
     use bevy::prelude::Vec3 as BevyVec3;
     use naia_bevy_shared::Serde;
+
+    #[derive(Default)]
+    pub struct Scores {
+        pub personal: HashMap<(String, PlayColor), u32>,
+        pub blue_total: u32,
+        pub pink_total: u32,
+    }
+
+    #[derive(Copy, Clone, Eq, Hash, PartialEq, Serde)]
+    pub enum PlayColor {
+        Blue,
+        Pink,
+    }
 
     #[derive(Clone, PartialEq, Serde)]
     pub struct Vec3 {
@@ -78,9 +108,10 @@ pub mod primitives {
 }
 
 pub mod messages {
-    use super::primitives::Vec3;
+    use super::primitives::{PlayColor, Vec3};
 
-    use naia_bevy_shared::{EntityProperty, Message, Protocol, ProtocolPlugin};
+    use bevy::prelude::Entity;
+    use naia_bevy_shared::{EntityProperty, Message, Protocol, ProtocolPlugin, Serde};
 
     // Plugin
     pub struct MessagesPlugin;
@@ -90,6 +121,8 @@ pub mod messages {
             protocol
                 .add_message::<Auth>()
                 .add_message::<EntityAssignment>()
+                .add_message::<PlayerEvent>()
+                .add_message::<TotalScoreState>()
                 .add_message::<KeyCommand>();
         }
     }
@@ -128,21 +161,99 @@ pub mod messages {
 
     #[derive(Message)]
     pub struct Auth {
-        pub username: String,
-        pub password: String,
+        pub magic_number: u16,
+        pub player_name: String,
+        pub player_color: PlayColor,
     }
 
     impl Auth {
-        pub fn new(username: &str, password: &str) -> Self {
+        pub fn new(username: &str, player_color: PlayColor) -> Self {
             Self {
-                username: username.to_string(),
-                password: password.to_string(),
+                magic_number: super::MAGIC_NUMBER,
+                player_name: username.to_string(),
+                player_color,
             }
         }
+    }
+
+    impl From<(String, String)> for Auth {
+        fn from((player_name, player_color): (String, String)) -> Self {
+            let player_color = match player_color.to_lowercase().as_ref() {
+                "blue" => PlayColor::Blue,
+                "pink" => PlayColor::Pink,
+                _ => PlayColor::Blue,
+            };
+            Self {
+                magic_number: super::MAGIC_NUMBER,
+                player_name,
+                player_color,
+            }
+        }
+    }
+
+    #[derive(Serde, Clone, PartialEq)]
+    pub enum EventKind {
+        PinkScored,
+        BlueScored,
+        ScoreSnapshot(i32),
+        Kicked,
+        DeniedGoalie,
+        DeniedFrame,
+    }
+
+    #[derive(Message)]
+    pub struct PlayerEvent {
+        pub entity: EntityProperty,
+        pub kind: EventKind,
+    }
+
+    impl PlayerEvent {
+        pub fn pink_scored() -> Self {
+            Self {
+                entity: EntityProperty::new_empty(),
+                kind: EventKind::PinkScored,
+            }
+        }
+
+        pub fn blue_scored() -> Self {
+            Self {
+                entity: EntityProperty::new_empty(),
+                kind: EventKind::BlueScored,
+            }
+        }
+
+        pub fn kicked() -> Self {
+            Self {
+                entity: EntityProperty::new_empty(),
+                kind: EventKind::Kicked,
+            }
+        }
+
+        pub fn new_denied_goalie() -> Self {
+            Self {
+                entity: EntityProperty::new_empty(),
+                kind: EventKind::DeniedGoalie,
+            }
+        }
+
+        pub fn new_denied_frame() -> Self {
+            Self {
+                entity: EntityProperty::new_empty(),
+                kind: EventKind::DeniedFrame,
+            }
+        }
+    }
+
+    #[derive(Message)]
+    pub struct TotalScoreState {
+        pub blue: u32,
+        pub pink: u32,
     }
 }
 
 pub mod components {
+    use super::primitives::PlayColor;
+
     use bevy::prelude::{Component, Transform, Vec3};
     use bevy_rapier3d::prelude::*;
     use naia_bevy_shared::{Property, Protocol, ProtocolPlugin, Replicate, Serde};
@@ -154,6 +265,7 @@ pub mod components {
         fn build(&self, protocol: &mut Protocol) {
             protocol
                 .add_component::<RepPhysics>()
+                .add_component::<Player>()
                 .add_component::<EntityKind>();
         }
     }
@@ -210,6 +322,28 @@ pub mod components {
 
     impl UpdateWith<(&Transform, &Velocity)> for RepPhysics {
         fn update_with(&mut self, (&transform, &velocity): (&Transform, &Velocity)) {
+            // if *self.translation_x == transform.translation.x {
+            //     *self.translation_x = transform.translation.x;
+            // }
+            // if *self.translation_y == transform.translation.y {
+            //     *self.translation_y = transform.translation.y;
+            // }
+            // if *self.translation_z == transform.translation.z {
+            //     *self.translation_z = transform.translation.z;
+            // }
+            //
+            // if *self.rotation_x == transform.rotation.x {
+            //     *self.rotation_x = transform.rotation.x;
+            // }
+            // if *self.rotation_y == transform.rotation.y {
+            //     *self.rotation_y = transform.rotation.y;
+            // }
+            // if *self.rotation_z == transform.rotation.z {
+            //     *self.rotation_z = transform.rotation.z;
+            // }
+            // if *self.rotation_w == transform.rotation.w {
+            //     *self.rotation_w = transform.rotation.w;
+            // }
             *self.translation_x = transform.translation.x;
             *self.translation_y = transform.translation.y;
             *self.translation_z = transform.translation.z;
@@ -281,6 +415,18 @@ pub mod components {
     }
 
     #[derive(Component, Replicate)]
+    pub struct Player {
+        pub name: Property<String>,
+        pub color: Property<PlayColor>,
+    }
+
+    impl Player {
+        pub fn new(name: String, color: PlayColor) -> Self {
+            Self::new_complete(name, color)
+        }
+    }
+
+    #[derive(Component, Replicate)]
     pub struct EntityKind {
         pub value: Property<EntityKindValue>,
     }
@@ -314,6 +460,9 @@ mod channel {
     #[derive(Channel)]
     pub struct EntityAssignmentChannel;
 
+    #[derive(Channel)]
+    pub struct GameStateChannel;
+
     // Plugin
     pub struct ChannelsPlugin;
 
@@ -325,6 +474,10 @@ mod channel {
                     ChannelMode::TickBuffered(TickBufferSettings::default()),
                 )
                 .add_channel::<EntityAssignmentChannel>(
+                    ChannelDirection::ServerToClient,
+                    ChannelMode::UnorderedReliable(ReliableSettings::default()),
+                )
+                .add_channel::<GameStateChannel>(
                     ChannelDirection::ServerToClient,
                     ChannelMode::UnorderedReliable(ReliableSettings::default()),
                 );

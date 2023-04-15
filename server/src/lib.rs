@@ -16,9 +16,10 @@ use core::{
 /// - The server_entity will be replicated to other clients
 use protocol::{
     self,
-    channels::{EntityAssignmentChannel, PlayerCommandChannel},
-    components::{EntityKind, RepPhysics, UpdateWith},
-    messages::{Auth, EntityAssignment, KeyCommand},
+    channels::{EntityAssignmentChannel, GameStateChannel, PlayerCommandChannel},
+    components::{EntityKind, Player, RepPhysics, UpdateWith},
+    messages::{Auth, EntityAssignment, KeyCommand, PlayerEvent, TotalScoreState},
+    primitives::{PlayColor, Scores},
 };
 
 use std::{collections::HashMap, time::Duration};
@@ -46,20 +47,30 @@ use naia_bevy_shared::BeforeReceiveEvents;
 #[derive(Resource)]
 pub struct Global {
     pub goalie_entity: Entity,
+    pub point_entity: Entity,
+
     pub main_room_key: RoomKey,
-    pub user_ball_map: HashMap<UserKey, Entity>,
+    pub player_to_entity: HashMap<UserKey, Entity>,
+    pub accept_queue: HashMap<UserKey, Player>,
+    pub entity_to_player: HashMap<Entity, UserKey>,
+    pub scores: Scores,
 }
 
-pub fn auth_events(mut server: Server, mut event_reader: EventReader<AuthEvents>) {
+pub fn auth_events(
+    mut global: ResMut<Global>,
+    mut server: Server,
+    mut event_reader: EventReader<AuthEvents>,
+) {
     for events in event_reader.iter() {
         for (user_key, auth) in events.read::<Auth>() {
-            if auth.username == "charlie" && auth.password == "12345" {
-                // Accept incoming connection
-                server.accept_connection(&user_key);
-            } else {
-                // Reject incoming connection
+            if auth.magic_number != protocol::MAGIC_NUMBER {
                 server.reject_connection(&user_key);
             }
+            server.accept_connection(&user_key);
+
+            global
+                .accept_queue
+                .insert(user_key, Player::new(auth.player_name, auth.player_color));
         }
     }
 }
@@ -80,6 +91,11 @@ pub fn connect_events(
 
         info!("Naia Server connected to Client: {}", address);
 
+        let player_component = global
+            .accept_queue
+            .remove(user_key)
+            .expect("component exists ffrom auth_events. qed");
+
         let ball_transform =
             TransformBundle::from_transform(Transform::from_translation(constants::BALL_START));
         let ball_velocity = Velocity::zero();
@@ -87,9 +103,12 @@ pub fn connect_events(
         let ball_entity = commands
             .spawn((
                 EntityKind::ball(),
+                player_component,
                 Ball::default(),
                 // Position::from(constants::BALL_START),
                 ball_rep_physics,
+            ))
+            .insert((
                 TransformBundle::from_transform(Transform::from_translation(constants::BALL_START)),
                 RigidBody::Dynamic,
                 // Group2 is the ball group.  Group1 is the goal/goalie group
@@ -109,15 +128,16 @@ pub fn connect_events(
                     coefficient: 1.0,
                     combine_rule: CoefficientCombineRule::Average,
                 },
+                Sleeping::default(),
             ))
-            .insert(Sleeping::default())
             .enable_replication(&mut server)
             .id();
 
         server
             .room_mut(&global.main_room_key)
             .add_entity(&ball_entity);
-        global.user_ball_map.insert(*user_key, ball_entity);
+        global.player_to_entity.insert(*user_key, ball_entity);
+        global.entity_to_player.insert(ball_entity, *user_key);
 
         // Send an Entity Assignment message to the User that owns the Square
         let mut assignment_message = EntityAssignment::new(true);
@@ -126,25 +146,32 @@ pub fn connect_events(
             user_key,
             &assignment_message,
         );
+
+        // Send Score Snapshots
+        let total_message = TotalScoreState {
+            blue: global.scores.blue_total,
+            pink: global.scores.pink_total,
+        };
+        server.send_message::<GameStateChannel, TotalScoreState>(user_key, &total_message);
     }
 }
 
 // Destroy User's entities
 pub fn disconnect_events(
-    // mut commands: Commands,
-    // mut server: Server,
-    // mut global: ResMut<Global>,
+    mut global: ResMut<Global>,
+    mut server: Server,
+    mut commands: Commands,
     mut event_reader: EventReader<DisconnectEvent>,
 ) {
-    for DisconnectEvent(_user_key, user) in event_reader.iter() {
+    for DisconnectEvent(user_key, user) in event_reader.iter() {
         info!("Naia Server disconnected from: {:?}", user.address);
 
-        // if let Some(entity) = global.user_to_square_map.remove(user_key) {
-        //     commands.entity(entity).despawn();
-        //     server
-        //         .room_mut(&global.main_room_key)
-        //         .remove_entity(&entity);
-        // }
+        if let Some(entity) = global.player_to_entity.remove(user_key) {
+            commands.entity(entity).despawn();
+            server
+                .room_mut(&global.main_room_key)
+                .remove_entity(&entity);
+        }
     }
 }
 
@@ -175,7 +202,14 @@ pub fn tick_events(
             if let Ok((mut transform, mut ball, mut ext_i)) = ball_query.get_mut(*entity) {
                 // let ray_normal = Vec3::new(0.015694855, -0.011672409, 0.9998087);
                 // let ray_point = Vec3::new(0.0017264052, 0.0070980787, 42.109978);
-                process_ball_command(key_command, &mut transform, &mut ball, &mut ext_i);
+                process_ball_command(
+                    &mut server,
+                    entity,
+                    key_command,
+                    &mut transform,
+                    &mut ball,
+                    &mut ext_i,
+                );
             }
         }
     }
@@ -242,6 +276,8 @@ pub fn remove_component_events(mut event_reader: EventReader<RemoveComponentEven
 }
 
 pub fn process_ball_command(
+    server: &mut Server,
+    entity: &Entity,
     key_command: KeyCommand,
     transform: &mut Transform,
     ball: &mut Ball,
@@ -270,18 +306,54 @@ pub fn process_ball_command(
         ext_i.torque_impulse = ext_i.torque_impulse * 0.15;
         // ext_i.impulse = impulse_camera;
         ball.shot = true;
+
+        let mut message = PlayerEvent::kicked();
+        message.entity.set(server, entity);
+        server.broadcast_message::<GameStateChannel, PlayerEvent>(&message);
     }
 }
 
 pub fn ball_score(
+    mut global: ResMut<Global>,
+    mut server: Server,
     mut collision_events: EventReader<CollisionEvent>,
-    mut ball_query: Query<&mut Ball>,
+    mut ball_query: Query<(&mut Ball, &Player)>,
+    // mut goalie_query: Query<&mut GoalieBehavior>,
 ) {
     for event in collision_events.iter() {
         // log::info!("Received collision event: {:?}", event);
-        if let CollisionEvent::Started(_, entity, _) = event {
-            let mut ball = ball_query.get_mut(*entity).unwrap();
-            ball.scored = true;
+        if let CollisionEvent::Started(entity, entity2, _) = event {
+            if entity == &global.point_entity {
+                if let Ok((mut ball, player)) = ball_query.get_mut(*entity2) {
+                    ball.scored = true;
+                    let player_color = *player.color;
+                    let mut message = if let PlayColor::Pink = player_color {
+                        global.scores.pink_total += 1;
+                        PlayerEvent::pink_scored()
+                    } else {
+                        global.scores.blue_total += 1;
+                        PlayerEvent::blue_scored()
+                    };
+                    *global
+                        .scores
+                        .personal
+                        .entry(((*player.name).clone(), player_color))
+                        .or_insert(0) += 1;
+
+                    message.entity.set(&server, &entity2);
+                    server.broadcast_message::<GameStateChannel, PlayerEvent>(&message);
+                }
+            } else if entity == &global.goalie_entity {
+                let mut deny_message = PlayerEvent::new_denied_goalie();
+                deny_message.entity.set(&server, &entity2);
+                server.broadcast_message::<GameStateChannel, PlayerEvent>(&deny_message);
+            } else {
+                //must've hit the goal frame.  Balls don't hit balls and goalies don't score points
+                //or hit the frame
+                let mut deny_message = PlayerEvent::new_denied_frame();
+                deny_message.entity.set(&server, &entity2);
+                server.broadcast_message::<GameStateChannel, PlayerEvent>(&deny_message);
+            }
         }
     }
 }
@@ -303,7 +375,7 @@ pub fn ball_reset(
 
         if ball.shot_elapsed >= constants::BALL_SHOT_WAIT_TIME
             || ball.force_reset
-            || (ball.scored && ball.shot_elapsed >= 2.0)
+            || (ball.scored && ball.shot_elapsed >= 1.0)
         {
             *ext_f = ExternalForce::default();
             *ext_i = ExternalImpulse::default();
@@ -318,9 +390,13 @@ pub fn ball_reset(
 }
 
 // in server after physics systems before naia 'ReceiveEvents' systems
-pub fn sync_physics(mut query: Query<(&Transform, &Velocity, &mut RepPhysics)>) {
-    for (transform, velocity, mut physics_properties) in query.iter_mut() {
-        physics_properties.update_with((transform, velocity));
+pub fn sync_physics(
+    mut query: Query<(&Transform, &Velocity, &Sleeping, &mut RepPhysics), Changed<Transform>>,
+) {
+    for (transform, velocity, sleep, mut physics_properties) in query.iter_mut() {
+        if !sleep.sleeping {
+            physics_properties.update_with((transform, velocity));
+        }
     }
 }
 
@@ -339,15 +415,15 @@ pub fn init(
 
     // Naia Server initialization
     let server_addresses = webrtc::ServerAddrs::new(
-        "127.0.0.1:14191"
+        "0.0.0.0:14191"
             .parse()
             .expect("could not parse Signaling address/port"),
         // IP Address to listen on for UDP WebRTC data channels
-        "127.0.0.1:14192"
+        "0.0.0.0:14192"
             .parse()
             .expect("could not parse WebRTC data address/port"),
         // The public WebRTC IP address to advertise
-        "http://127.0.0.1:14192",
+        protocol::SERVER_AD_URL,
     );
     let socket = webrtc::Socket::new(&server_addresses, server.socket_config());
     server.listen(socket);
@@ -356,12 +432,16 @@ pub fn init(
     // can receive updates from
     let main_room_key = server.make_room().key();
 
-    let goalie_entity = init_physics(&mut commands, &mut server, &main_room_key);
+    let (goalie_entity, point_entity) = init_physics(&mut commands, &mut server, &main_room_key);
     // Resources
     commands.insert_resource(Global {
         goalie_entity,
+        point_entity,
         main_room_key,
-        user_ball_map: HashMap::new(),
+        player_to_entity: HashMap::new(),
+        entity_to_player: HashMap::new(),
+        accept_queue: HashMap::new(),
+        scores: Default::default(),
     })
 }
 
@@ -369,7 +449,7 @@ pub fn init_physics(
     commands: &mut Commands,
     server: &mut Server,
     main_room_key: &RoomKey,
-) -> Entity {
+) -> (Entity, Entity) {
     log::info!("init_physics");
 
     //#NOTE this is not a replicated entity, the client must render this in the init function.  the
@@ -387,6 +467,7 @@ pub fn init_physics(
     let y = constants::GROUND_HEIGHT;
     let z = 32.0;
     let rad = 0.2;
+    let mut point_entity: Entity = Entity::PLACEHOLDER;
     commands
         .spawn((
             Name::new("Goal"),
@@ -399,24 +480,29 @@ pub fn init_physics(
                 Name::new("FrameTop"),
                 TransformBundle::from(Transform::from_xyz(0.0, rad * 10.0, 0.0)),
                 Collider::cuboid(rad * 10.0, rad * 0.5, rad),
+                ActiveEvents::COLLISION_EVENTS,
             ));
             p.spawn((
                 Name::new("FrameLeft"),
                 TransformBundle::from(Transform::from_xyz(rad * 10.0, rad * 5.0, 0.0)),
                 Collider::cuboid(rad * 0.5, rad * 5.0, rad),
+                ActiveEvents::COLLISION_EVENTS,
             ));
             p.spawn((
                 Name::new("FrameRight"),
                 TransformBundle::from(Transform::from_xyz(-rad * 10.0, rad * 5.0, 0.0)),
                 Collider::cuboid(rad * 0.5, rad * 5.0, rad),
-            ));
-            p.spawn((
-                Name::new("PointZone"),
-                TransformBundle::from(Transform::from_xyz(0.0, rad * 5.0, (-rad * 0.5) - rad)),
-                Sensor,
-                Collider::cuboid(rad * 10.0, rad * 5.0, rad * 0.5),
                 ActiveEvents::COLLISION_EVENTS,
             ));
+            point_entity = p
+                .spawn((
+                    Name::new("PointZone"),
+                    TransformBundle::from(Transform::from_xyz(0.0, rad * 5.0, (-rad * 0.5) - rad)),
+                    Sensor,
+                    Collider::cuboid(rad * 10.0, rad * 5.0, rad * 0.5),
+                    ActiveEvents::COLLISION_EVENTS,
+                ))
+                .id();
         });
 
     let goalie_transform =
@@ -430,7 +516,11 @@ pub fn init_physics(
             GoalieBehavior::default(),
             goalie_rep_physics,
             // Sensor,
-            TransformBundle::from_transform(Transform::from_translation(constants::GOALIE_START)),
+            TransformBundle::from_transform(Transform {
+                translation: constants::GOALIE_START,
+                // rotation: Quat::from_rotation_y(4.71239),
+                ..Default::default()
+            }),
             RigidBody::KinematicPositionBased,
             CollisionGroups::new(Group::GROUP_1, Group::GROUP_2),
             Collider::capsule_y(constants::GOALIE_HEIGHT * 0.5, constants::GOALIE_RADIUS),
@@ -444,13 +534,15 @@ pub fn init_physics(
                 combine_rule: CoefficientCombineRule::Average,
             },
             goalie_velocity,
+            Sleeping::default(),
+            ActiveEvents::COLLISION_EVENTS,
         ))
         .enable_replication(server)
         .id();
 
     server.room_mut(main_room_key).add_entity(&goalie);
 
-    goalie
+    (goalie, point_entity)
 }
 
 pub fn run() {

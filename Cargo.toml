@@ -8,7 +8,34 @@ repository = "https://github.com/aetheras-io/eliz-gold"
 log = "0.4.0"
 anyhow = "1"
 
-bevy = { version = "0.10.0", features = ["jpeg"] }
+# bevy = { version = "0.10.1", features = ["jpeg"] }
+bevy = { version = "0.10.1", default-features = false, features = [
+  "animation",
+  "bevy_asset",
+  "bevy_audio",
+  # "bevy_gilrs",
+  "bevy_scene",
+  "bevy_winit",
+  "bevy_core_pipeline",
+  "bevy_pbr",
+  "bevy_gltf",
+  "bevy_render",
+  "bevy_sprite",
+  "bevy_text",
+  "bevy_ui",
+  "png",
+  "hdr",
+  "ktx2",
+  "zstd",
+  "vorbis",
+  "x11",
+  "filesystem_watcher",
+  "android_shared_stdcxx",
+  "tonemapping_luts",
+
+  "wav",
+  "mp3",
+  ] }
 # bevy_asset_loader = { version = "0.16" }
 bevy_rapier3d = { version = "0.21.0" }
 bevy_turborand = { version = "0.5.0" }
@@ -26,33 +53,38 @@ bevy-debug-text-overlay = { version = "5.1" }
 # naia-bevy-server = { version = "0.20", features = ["transport_webrtc"] }
 # naia-bevy-shared = { version = "0.20" }
 
-naia-bevy-client = { git = "https://github.com/naia-lib/naia", rev = "954f36e7dcb27be086951c0d3208bde34d552dba", features = ["transport_webrtc"] }
-naia-bevy-server = { git = "https://github.com/naia-lib/naia", rev = "954f36e7dcb27be086951c0d3208bde34d552dba", features = ["transport_webrtc"] }
-naia-bevy-shared = { git = "https://github.com/naia-lib/naia", rev = "954f36e7dcb27be086951c0d3208bde34d552dba" }
+# naia-bevy-client = { git = "https://github.com/naia-lib/naia", rev = "954f36e7dcb27be086951c0d3208bde34d552dba", features = ["transport_webrtc"] }
+# naia-bevy-server = { git = "https://github.com/naia-lib/naia", rev = "954f36e7dcb27be086951c0d3208bde34d552dba", features = ["transport_webrtc"] }
+# naia-bevy-shared = { git = "https://github.com/naia-lib/naia", rev = "954f36e7dcb27be086951c0d3208bde34d552dba" }
 
-# Enable a small amount of optimization in debug mode
-[profile.dev]
-opt-level = 1
+naia-bevy-client = { path = "../naia/adapters/bevy/client", features = ["transport_webrtc"] }
+naia-bevy-server = { path = "../naia/adapters/bevy/server", features = ["transport_webrtc"] }
+naia-bevy-shared = { path = "../naia/adapters/bevy/shared" }
 
-# Enable high optimizations for dependencies (incl. Bevy), but not for our code:
-[profile.dev.package."*"]
-opt-level = 3
-
+# # Enable a small amount of optimization in debug mode
+# [profile.dev]
+# opt-level = 1
+#
+# # Enable high optimizations for dependencies (incl. Bevy), but not for our code:
+# [profile.dev.package."*"]
+# opt-level = 3
+#
 [profile.wasm-release]
 # Use release profile as default values
 inherits = "release"
-
-# Optimize with size in mind, also try "s", sometimes it is better.
-# This doesn't increase compilation times compared to -O3, great improvements
-opt-level = "z"
-
-# Do a second optimization pass removing duplicate or unused code from dependencies.
-# Slows compile times, marginal improvements
-lto = "fat"
-
-# When building crates, optimize larger chunks at a time
-# Slows compile times, marginal improvements
-codegen-units = 1
+lto = "thin"
+#
+# # Optimize with size in mind, also try "s", sometimes it is better.
+# # This doesn't increase compilation times compared to -O3, great improvements
+# opt-level = "z"
+#
+# # Do a second optimization pass removing duplicate or unused code from dependencies.
+# # Slows compile times, marginal improvements
+# lto = "fat"
+#
+# # When building crates, optimize larger chunks at a time
+# # Slows compile times, marginal improvements
+# codegen-units = 1
 
 [workspace]
 resolver = "2"
@@ -63,5 +95,7 @@ members = [
     "protocol",
 
     "bin/powerbaby",
-    "bin/pbc"
+    "bin/pbc",
+    "bin/pbcs",
+    "mobile"
 ]
