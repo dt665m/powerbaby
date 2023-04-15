@@ -9,3 +9,5 @@ repository.workspace = true
 bevy = { workspace = true }
 bevy_rapier3d = { workspace = true }
 naia-bevy-shared = { workspace = true }
+
+serde = "1"

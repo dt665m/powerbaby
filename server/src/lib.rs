@@ -22,7 +22,7 @@ use protocol::{
     primitives::{PlayColor, Scores},
 };
 
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, fs, time::Duration};
 
 use bevy::app::{ScheduleRunnerPlugin, ScheduleRunnerSettings};
 use bevy::asset::AssetPlugin;
@@ -329,16 +329,21 @@ pub fn ball_score(
                     let player_color = *player.color;
                     let mut message = if let PlayColor::Pink = player_color {
                         global.scores.pink_total += 1;
+                        *global
+                            .scores
+                            .personal_pink
+                            .entry((*player.name).clone())
+                            .or_insert(0) += 1;
                         PlayerEvent::pink_scored()
                     } else {
+                        *global
+                            .scores
+                            .personal_blue
+                            .entry((*player.name).clone())
+                            .or_insert(0) += 1;
                         global.scores.blue_total += 1;
                         PlayerEvent::blue_scored()
                     };
-                    *global
-                        .scores
-                        .personal
-                        .entry(((*player.name).clone(), player_color))
-                        .or_insert(0) += 1;
 
                     message.entity.set(&server, &entity2);
                     server.broadcast_message::<GameStateChannel, PlayerEvent>(&message);
@@ -355,6 +360,23 @@ pub fn ball_score(
                 server.broadcast_message::<GameStateChannel, PlayerEvent>(&deny_message);
             }
         }
+    }
+}
+
+#[derive(Resource)]
+pub struct LastFlush(f32);
+const STORAGE_PATH: &str = "/var/powerbaby.json";
+// const STORAGE_PATH: &str = "./powerbaby.json";
+pub fn flush_scores(time: Res<Time>, global: Res<Global>, mut last_flush: ResMut<LastFlush>) {
+    last_flush.0 += time.delta_seconds();
+    if last_flush.0 >= 30.0 {
+        last_flush.0 = 0.0;
+    }
+
+    let elapsed = time.elapsed_seconds() as u64;
+    if elapsed > 0 && (elapsed % 30 == 0) {
+        let score_bytes = serde_json::to_vec_pretty(&global.scores).unwrap();
+        fs::write(STORAGE_PATH, score_bytes).unwrap();
     }
 }
 
@@ -433,6 +455,10 @@ pub fn init(
     let main_room_key = server.make_room().key();
 
     let (goalie_entity, point_entity) = init_physics(&mut commands, &mut server, &main_room_key);
+
+    //load scores
+    let scores_json: String = fs::read_to_string(STORAGE_PATH).unwrap_or_default();
+    let scores: Scores = serde_json::from_str(&scores_json).unwrap_or_default();
     // Resources
     commands.insert_resource(Global {
         goalie_entity,
@@ -441,8 +467,9 @@ pub fn init(
         player_to_entity: HashMap::new(),
         entity_to_player: HashMap::new(),
         accept_queue: HashMap::new(),
-        scores: Default::default(),
-    })
+        scores,
+    });
+    commands.insert_resource(LastFlush(0.0));
 }
 
 pub fn init_physics(
@@ -595,6 +622,8 @@ pub fn run() {
         .edit_schedule(CoreSchedule::FixedUpdate, |schedule| {
             schedule.add_systems((goalie, magnus_effect).after(PhysicsSet::Writeback));
         })
-        .add_systems((sync_physics, ball_reset, ball_score).in_set(BeforeReceiveEvents))
+        .add_systems(
+            (flush_scores, sync_physics, ball_reset, ball_score).in_set(BeforeReceiveEvents),
+        )
         .run();
 }

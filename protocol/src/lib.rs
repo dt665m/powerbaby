@@ -8,8 +8,10 @@ use std::time::Duration;
 use naia_bevy_shared::Protocol;
 
 pub const MAGIC_NUMBER: u16 = 0772;
-pub const SERVER_HANDSHAKE_URL: &str = "http://192.168.0.188:14191";
-pub const SERVER_AD_URL: &str = "http://192.168.0.188:14192";
+// pub const SERVER_HANDSHAKE_URL: &str = "http://192.168.0.188:14191";
+// pub const SERVER_AD_URL: &str = "http://192.168.0.188:14192";
+pub const SERVER_HANDSHAKE_URL: &str = "http://35.184.62.109:14191";
+pub const SERVER_AD_URL: &str = "http://35.184.62.109:14192";
 // pub const SERVER_HANDSHAKE_URL: &str = "http://127.0.0.1:14191";
 // pub const SERVER_AD_URL: &str = "http://127.0.0.1:14192";
 // pub const SERVER_URL: &str = "http://192.168.0.188:14191";
@@ -75,15 +77,17 @@ pub mod primitives {
 
     use bevy::prelude::Vec3 as BevyVec3;
     use naia_bevy_shared::Serde;
+    use serde::{Deserialize, Serialize};
 
-    #[derive(Default)]
+    #[derive(Default, Serialize, Deserialize)]
     pub struct Scores {
-        pub personal: HashMap<(String, PlayColor), u32>,
+        pub personal_blue: HashMap<String, u32>,
+        pub personal_pink: HashMap<String, u32>,
         pub blue_total: u32,
         pub pink_total: u32,
     }
 
-    #[derive(Copy, Clone, Eq, Hash, PartialEq, Serde)]
+    #[derive(Copy, Clone, Eq, Hash, PartialEq, Serde, Serialize, Deserialize)]
     pub enum PlayColor {
         Blue,
         Pink,
@@ -110,7 +114,6 @@ pub mod primitives {
 pub mod messages {
     use super::primitives::{PlayColor, Vec3};
 
-    use bevy::prelude::Entity;
     use naia_bevy_shared::{EntityProperty, Message, Protocol, ProtocolPlugin, Serde};
 
     // Plugin

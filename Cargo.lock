@@ -4175,6 +4175,7 @@ dependencies = [
  "bevy",
  "bevy_rapier3d",
  "naia-bevy-shared",
+ "serde",
 ]
 
 [[package]]
@@ -4189,6 +4190,8 @@ dependencies = [
  "naia-bevy-shared",
  "powerbaby-core",
  "powerbaby-protocol",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

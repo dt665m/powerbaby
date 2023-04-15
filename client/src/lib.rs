@@ -31,7 +31,7 @@ use bevy::prelude::*;
 // use bevy_asset_loader::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-use bevy_debug_text_overlay::{screen_print, OverlayPlugin};
+// use bevy_debug_text_overlay::{screen_print, OverlayPlugin};
 // use bevy_inspector_egui::prelude::*;
 // use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
@@ -54,14 +54,14 @@ struct MainLoop;
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 struct Tick;
 
-pub fn debug_overlay(time: Res<Time>) {
-    let current_time = time.elapsed_seconds_f64();
-    let at_interval = |t: f64| current_time % t < time.delta_seconds_f64();
-    if at_interval(0.1) {
-        let last_fps = 1.0 / time.delta_seconds();
-        screen_print!(col: Color::CYAN, "fps: {last_fps:.0}");
-    }
-}
+// pub fn debug_overlay(time: Res<Time>) {
+//     let current_time = time.elapsed_seconds_f64();
+//     let at_interval = |t: f64| current_time % t < time.delta_seconds_f64();
+//     if at_interval(0.1) {
+//         let last_fps = 1.0 / time.delta_seconds();
+//         screen_print!(col: Color::CYAN, "fps: {last_fps:.0}");
+//     }
+// }
 
 // A unit struct to help identify the FPS UI component, since there may be many Text components
 #[derive(Component)]
@@ -1367,14 +1367,22 @@ mod input {
             }
             (true, false, false) => {
                 if let Some(pos) = touches.first_pressed_position() {
-                    capture_ball_touch(
-                        camera_query,
-                        window,
-                        pos,
-                        rapier_context,
-                        &global.ground_entity,
+                    Some(
+                        capture_ball_touch(
+                            camera_query,
+                            window,
+                            pos,
+                            rapier_context,
+                            &global.ground_entity,
+                        )
+                        .map(|(ray_normal, ray_point)| (ray_normal.into(), ray_point.into()))
+                        .unwrap_or_else(|| {
+                            (
+                                Vec3::new(0.015694855, -0.011672409, 0.9998087).into(),
+                                Vec3::new(0.0017264052, 0.0070980787, 42.109978).into(),
+                            )
+                        }),
                     )
-                    .map(|(ray_normal, ray_point)| (ray_normal.into(), ray_point.into()))
                 } else {
                     None
                 }
@@ -1588,30 +1596,22 @@ pub fn run() {
         // )
         // .add_collection_to_loading_state::<_, AppAssets>(AppState::Loading)
         .add_state::<AppState>()
-        .add_plugins(
-            DefaultPlugins.set(WindowPlugin {
-                primary_window: Some(Window {
-                    title: "Power, Baby! (ONLINE)".into(),
-                    resolution: bevy::window::WindowResolution::new(480.0, 720.0)
-                        .with_scale_factor_override(8.0),
-                    // resolution: (480.0, 720.0).into(),
-                    // resolution: (480.0, 720.0).into(),
-                    // scale_factor: 2.0,
-                    // mode: window::WindowMode::SizedFullscreen,
-                    // resolution: (1920., 1080.).into(),
-                    // fit_canvas_to_parent: true,
-                    prevent_default_event_handling: false,
-                    canvas: Some("canvas".to_owned()),
-                    ..default()
-                }),
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Power, Baby! (ONLINE)".into(),
+                resolution: (768.0, 1152.0).into(),
+                prevent_default_event_handling: false,
+                // canvas: Some("canvas".to_owned()),
+                focused: true,
                 ..default()
             }),
-        )
-        // .add_plugin(WorldInspectorPlugin::new())
-        .add_plugin(OverlayPlugin {
-            font_size: 32.0,
             ..default()
-        })
+        }))
+        // .add_plugin(WorldInspectorPlugin::new())
+        // .add_plugin(OverlayPlugin {
+        //     font_size: 32.0,
+        //     ..default()
+        // })
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(NaiaClientPlugin::new(
             ClientConfig::default(),
@@ -1643,7 +1643,7 @@ pub fn run() {
                 // button_handler,
                 // name_input,
                 sync::serverside_entities,
-                debug_overlay,
+                // debug_overlay,
             )
                 .chain()
                 .in_set(MainLoop),
@@ -1653,7 +1653,7 @@ pub fn run() {
         .configure_set(MainLoop.after(Tick))
         // .configure_set(Tick.after(ReceiveEvents).run_if(in_state(AppState::InGame)))
         // .configure_set(MainLoop.after(Tick).run_if(in_state(AppState::InGame)))
-        .add_system(bevy::window::close_on_esc)
+        // .add_system(bevy::window::close_on_esc)
         // Run App
         .run();
 }
