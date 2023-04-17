@@ -1598,7 +1598,7 @@ pub fn run() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Power, Baby! (ONLINE)".into(),
-                resolution: (768.0, 1152.0).into(),
+                resolution: (480.0, 720.0).into(),
                 prevent_default_event_handling: false,
                 // canvas: Some("canvas".to_owned()),
                 focused: true,

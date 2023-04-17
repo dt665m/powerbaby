@@ -2,21 +2,21 @@ import { useState, useEffect } from 'react';
 import './App.css';
 
 function App() {
-  //   const [scores, setData] = useState(null);
-  //
-  // useEffect(() => {
-  //   const fetchData = async () => {
-  //     const response = await fetch('test.json');
-  //     const json = await response.json();
-  //     console.log(json);
-  //     setData(json);
-  //   };
-  //   fetchData();
-  // }, []);
-  //
-  // if (!scores) {
-  //   return <div>Loading...</div>;
-  // }
+    const [scores, setData] = useState(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const response = await fetch('result.json');
+      const json = await response.json();
+      console.log(json);
+      setData(json);
+    };
+    fetchData();
+  }, []);
+
+  if (!scores) {
+    return <div>Loading...</div>;
+  }
   //  const old = {
   //   "personal_blue": {
   //     "a": 30,
@@ -44,17 +44,15 @@ function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <Form/>
-        <YoutubeEmbed embedId={"HrlTNQ6ZbnM"}/>
+      <Leaderboard
+        pinkScores={scores.personal_pink}
+        blueScores={scores.personal_blue}
+      />
       </header>
     </div>
   );
 }
 
-      // <Leaderboard
-      //   pinkScores={scores.personal_pink}
-      //   blueScores={scores.personal_blue}
-      // />
 
 function Form() {
   const [name, setName] = useState("");
@@ -68,7 +66,7 @@ function Form() {
     }
     // window.open(`https://example.com?name=${name}&color=${color}`, "_blank");
     alert("Thanks for joining the game!  Please note:  If the game does not load, you may be on a mobile device that is not supported.  In that case, please retry with a PC or Mac browser.  Sorry! Pro Tip, the game can be zoomed in on a mobile device by double tapping the game window.  You can get better control of the angles.  Good luck!");
-    window.open(`https://power-baby/game.html?name=${name}&color=${color}`, "_blank");
+    window.open(`https://power-baby.com/game.html?name=${name}&color=${color}`, "_blank");
   };
 
   return (
