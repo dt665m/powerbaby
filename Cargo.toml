@@ -1,8 +1,8 @@
 [workspace.package]
-authors = [ "denistsai@aetheras.io" ]
+authors = [ "dt665m@gmail.com" ]
 version = "0.1.0"
 edition = "2021"
-repository = "https://github.com/aetheras-io/eliz-gold"
+repository = "https://github.com/dt665m/powerbaby"
 
 [workspace.dependencies]
 log = "0.4.0"

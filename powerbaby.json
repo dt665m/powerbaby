@@ -1,8 +1,11 @@
 {
-  "personal_blue": {},
+  "personal_blue": {
+    "armorous0772": 3,
+    "denis": 7
+  },
   "personal_pink": {
     "tiff": 20
   },
-  "blue_total": 0,
+  "blue_total": 10,
   "pink_total": 20
 }

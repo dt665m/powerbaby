@@ -11,10 +11,10 @@ pub const MAGIC_NUMBER: u16 = 0772;
 // pub const SERVER_HANDSHAKE_URL: &str = "http://192.168.0.188:14191";
 // pub const SERVER_AD_URL: &str = "http://192.168.0.188:14192";
 // pub const SERVER_HANDSHAKE_URL: &str = "http://35.184.62.109:14191";
-pub const SERVER_HANDSHAKE_URL: &str = "https://powerbaby.ngrok.io";
-pub const SERVER_AD_URL: &str = "http://35.184.62.109:14192";
-// pub const SERVER_HANDSHAKE_URL: &str = "http://127.0.0.1:14191";
-// pub const SERVER_AD_URL: &str = "http://127.0.0.1:14192";
+// pub const SERVER_HANDSHAKE_URL: &str = "https://powerbaby.ngrok.io";
+// pub const SERVER_AD_URL: &str = "http://35.184.62.109:14192";
+pub const SERVER_HANDSHAKE_URL: &str = "http://127.0.0.1:14191";
+pub const SERVER_AD_URL: &str = "http://127.0.0.1:14192";
 // pub const SERVER_URL: &str = "http://192.168.0.188:14191";
 // pub const SERVER_URL: &str = "http://192.168.50.156:14191";
 
